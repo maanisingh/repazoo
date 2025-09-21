@@ -1,0 +1,150 @@
+{
+  "name": "RepAZoo Web Scraping Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "scrape-mentions",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "url": "https://news.google.com/search",
+        "qs": {
+          "q": "={{ $json[\"person_name\"] }} {{ $json[\"company\"] }}"
+        },
+        "options": {}
+      },
+      "id": "google-news",
+      "name": "Google News Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "url": "https://www.linkedin.com/search/results/content/",
+        "qs": {
+          "keywords": "={{ $json[\"person_name\"] }} {{ $json[\"job_title\"] }} {{ $json[\"company\"] }}"
+        },
+        "options": {}
+      },
+      "id": "linkedin-search",
+      "name": "LinkedIn Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 350]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "url": "https://hn.algolia.com/api/v1/search",
+        "qs": {
+          "query": "={{ $json[\"company\"] }}",
+          "tags": "story"
+        },
+        "options": {}
+      },
+      "id": "hackernews-search",
+      "name": "HackerNews API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "code": "// Parse and structure the scraped data\nconst mention = {\n  title: item.title || item.story_title || 'No title',\n  content: item.content || item.text || item.description || '',\n  url: item.url || item.story_url || '',\n  source: item.source || 'Unknown',\n  source_type: 'NEWS_WEBSITE',\n  author: item.author || item.by || null,\n  published_at: item.created_at || item.published || new Date().toISOString(),\n  person_name: $node[\"webhook-trigger\"].json[\"person_name\"],\n  company: $node[\"webhook-trigger\"].json[\"company\"],\n  job_title: $node[\"webhook-trigger\"].json[\"job_title\"],\n  scraped_by: 'n8n',\n  status: 'NEW'\n};\n\n// Basic sentiment analysis\nconst positiveWords = ['excellent', 'great', 'innovative', 'success', 'leader', 'growth', 'achievement'];\nconst negativeWords = ['concern', 'issue', 'problem', 'failure', 'decline', 'criticism', 'controversy'];\n\nconst text = (mention.title + ' ' + mention.content).toLowerCase();\nlet positiveCount = 0;\nlet negativeCount = 0;\n\npositiveWords.forEach(word => {\n  if (text.includes(word)) positiveCount++;\n});\n\nnegativeWords.forEach(word => {\n  if (text.includes(word)) negativeCount++;\n});\n\nif (positiveCount > negativeCount) {\n  mention.sentiment = 'POSITIVE';\n  mention.sentiment_score = 0.7 + (positiveCount * 0.05);\n} else if (negativeCount > positiveCount) {\n  mention.sentiment = 'NEGATIVE';\n  mention.sentiment_score = 0.3 - (negativeCount * 0.05);\n} else {\n  mention.sentiment = 'NEUTRAL';\n  mention.sentiment_score = 0.5;\n}\n\n// Extract keywords\nconst keywords = [];\nif (text.includes('ceo')) keywords.push('CEO');\nif (text.includes('technology')) keywords.push('technology');\nif (text.includes('startup')) keywords.push('startup');\nif (text.includes('funding')) keywords.push('funding');\nif (text.includes('product')) keywords.push('product');\nif (text.includes('musso')) keywords.push('Musso');\n\nmention.keywords = keywords;\n\nreturn mention;"
+      },
+      "id": "process-data",
+      "name": "Process & Analyze",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 350]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "resource": "mentions",
+        "options": {
+          "onConflict": "url",
+          "upsert": true
+        }
+      },
+      "id": "supabase-insert",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [850, 350],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "resource": "scraping_jobs",
+        "id": "={{ $node[\"webhook-trigger\"].json[\"job_id\"] }}",
+        "updateFields": {
+          "status": "COMPLETED",
+          "completed_at": "={{ new Date().toISOString() }}",
+          "mentions_found": "={{ $items.length }}"
+        }
+      },
+      "id": "update-job-status",
+      "name": "Update Job Status",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 350],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [
+        [
+          { "node": "google-news", "type": "main", "index": 0 },
+          { "node": "linkedin-search", "type": "main", "index": 0 },
+          { "node": "hackernews-search", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "google-news": {
+      "main": [[{ "node": "process-data", "type": "main", "index": 0 }]]
+    },
+    "linkedin-search": {
+      "main": [[{ "node": "process-data", "type": "main", "index": 0 }]]
+    },
+    "hackernews-search": {
+      "main": [[{ "node": "process-data", "type": "main", "index": 0 }]]
+    },
+    "process-data": {
+      "main": [[{ "node": "supabase-insert", "type": "main", "index": 0 }]]
+    },
+    "supabase-insert": {
+      "main": [[{ "node": "update-job-status", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  }
+}

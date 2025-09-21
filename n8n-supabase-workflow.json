@@ -1,0 +1,388 @@
+{
+  "name": "RepAZoo Supabase Web Scraping",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "scrape-mentions",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "scrape-mentions"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract person details from webhook\nconst personName = $input.first().json.person_name || 'Unknown';\nconst company = $input.first().json.company || '';\nconst jobTitle = $input.first().json.job_title || '';\n\n// Create search queries\nconst queries = [\n  `\"${personName}\" ${company}`,\n  `${personName} ${jobTitle}`,\n  `${personName} ${company} ${jobTitle}`,\n  `${personName} news`,\n  `${personName} ${company} news`\n];\n\nreturn queries.map(query => ({\n  json: {\n    person_name: personName,\n    company: company,\n    job_title: jobTitle,\n    search_query: query\n  }\n}));"
+      },
+      "id": "prepare-queries",
+      "name": "Prepare Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://news.google.com/rss/search",
+        "qs": {
+          "q": "={{ $json.search_query }}",
+          "hl": "en",
+          "gl": "US",
+          "ceid": "US:en"
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "xml"
+            }
+          }
+        }
+      },
+      "id": "google-news-scrape",
+      "name": "Google News Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search",
+        "qs": {
+          "query": "={{ $json.search_query }}",
+          "tags": "story",
+          "hitsPerPage": "10"
+        }
+      },
+      "id": "hackernews-scrape",
+      "name": "HackerNews Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 350]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/search.json",
+        "qs": {
+          "q": "={{ $json.search_query }}",
+          "sort": "new",
+          "limit": "10"
+        },
+        "options": {
+          "headers": {
+            "User-Agent": "RepAZoo Scraper 1.0"
+          }
+        }
+      },
+      "id": "reddit-scrape",
+      "name": "Reddit Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google News RSS\nconst items = [];\nconst personName = $input.first().json.person_name;\nconst company = $input.first().json.company;\nconst jobTitle = $input.first().json.job_title;\n\nif ($input.first().json.rss && $input.first().json.rss.channel && $input.first().json.rss.channel.item) {\n  const newsItems = Array.isArray($input.first().json.rss.channel.item) \n    ? $input.first().json.rss.channel.item \n    : [$input.first().json.rss.channel.item];\n  \n  for (const item of newsItems.slice(0, 5)) {\n    // Simple sentiment analysis\n    const content = (item.title + ' ' + (item.description || '')).toLowerCase();\n    let sentiment = 'NEUTRAL';\n    let sentimentScore = 0;\n    \n    const positiveWords = ['excellent', 'great', 'success', 'award', 'winner', 'achievement', 'outstanding'];\n    const negativeWords = ['scandal', 'fraud', 'lawsuit', 'fired', 'crisis', 'failure', 'controversial'];\n    \n    const positiveCount = positiveWords.filter(word => content.includes(word)).length;\n    const negativeCount = negativeWords.filter(word => content.includes(word)).length;\n    \n    if (positiveCount > negativeCount) {\n      sentiment = 'POSITIVE';\n      sentimentScore = 0.7;\n    } else if (negativeCount > positiveCount) {\n      sentiment = 'NEGATIVE';\n      sentimentScore = -0.7;\n    }\n    \n    items.push({\n      json: {\n        title: item.title,\n        content: item.description || item.title,\n        url: item.link,\n        source: 'Google News',\n        source_type: 'NEWS_WEBSITE',\n        author: item.source || 'Google News',\n        published_at: item.pubDate,\n        sentiment: sentiment,\n        sentiment_score: sentimentScore,\n        keywords: [personName.toLowerCase(), company.toLowerCase()].filter(Boolean),\n        person_name: personName,\n        company: company,\n        job_title: jobTitle,\n        scraped_by: 'n8n',\n        raw_data: item\n      }\n    });\n  }\n}\n\nreturn items;"
+      },
+      "id": "process-google-news",
+      "name": "Process Google News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process HackerNews\nconst items = [];\nconst personName = $input.first().json.person_name;\nconst company = $input.first().json.company;\nconst jobTitle = $input.first().json.job_title;\n\nif ($input.first().json.hits) {\n  for (const hit of $input.first().json.hits.slice(0, 5)) {\n    // Simple sentiment analysis\n    const content = (hit.title + ' ' + (hit.story_text || '')).toLowerCase();\n    let sentiment = 'NEUTRAL';\n    let sentimentScore = 0;\n    \n    const positiveWords = ['excellent', 'great', 'success', 'innovation', 'breakthrough'];\n    const negativeWords = ['bad', 'terrible', 'awful', 'scam', 'failure'];\n    \n    const positiveCount = positiveWords.filter(word => content.includes(word)).length;\n    const negativeCount = negativeWords.filter(word => content.includes(word)).length;\n    \n    if (positiveCount > negativeCount) {\n      sentiment = 'POSITIVE';\n      sentimentScore = 0.6;\n    } else if (negativeCount > positiveCount) {\n      sentiment = 'NEGATIVE';\n      sentimentScore = -0.6;\n    }\n    \n    items.push({\n      json: {\n        title: hit.title,\n        content: hit.story_text || hit.title,\n        url: `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        source: 'Hacker News',\n        source_type: 'FORUM',\n        author: hit.author,\n        published_at: new Date(hit.created_at).toISOString(),\n        sentiment: sentiment,\n        sentiment_score: sentimentScore,\n        keywords: [personName.toLowerCase(), company.toLowerCase()].filter(Boolean),\n        person_name: personName,\n        company: company,\n        job_title: jobTitle,\n        scraped_by: 'n8n',\n        raw_data: hit\n      }\n    });\n  }\n}\n\nreturn items;"
+      },
+      "id": "process-hackernews",
+      "name": "Process HackerNews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 350]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Reddit\nconst items = [];\nconst personName = $input.first().json.person_name;\nconst company = $input.first().json.company;\nconst jobTitle = $input.first().json.job_title;\n\nif ($input.first().json.data && $input.first().json.data.children) {\n  for (const child of $input.first().json.data.children.slice(0, 5)) {\n    const post = child.data;\n    \n    // Simple sentiment analysis\n    const content = (post.title + ' ' + (post.selftext || '')).toLowerCase();\n    let sentiment = 'NEUTRAL';\n    let sentimentScore = 0;\n    \n    const positiveWords = ['awesome', 'great', 'love', 'excellent', 'amazing'];\n    const negativeWords = ['hate', 'terrible', 'awful', 'scam', 'bad'];\n    \n    const positiveCount = positiveWords.filter(word => content.includes(word)).length;\n    const negativeCount = negativeWords.filter(word => content.includes(word)).length;\n    \n    if (positiveCount > negativeCount) {\n      sentiment = 'POSITIVE';\n      sentimentScore = 0.5;\n    } else if (negativeCount > positiveCount) {\n      sentiment = 'NEGATIVE';\n      sentimentScore = -0.5;\n    }\n    \n    items.push({\n      json: {\n        title: post.title,\n        content: post.selftext || post.title,\n        url: `https://reddit.com${post.permalink}`,\n        source: `Reddit r/${post.subreddit}`,\n        source_type: 'FORUM',\n        author: post.author,\n        published_at: new Date(post.created_utc * 1000).toISOString(),\n        sentiment: sentiment,\n        sentiment_score: sentimentScore,\n        keywords: [personName.toLowerCase(), company.toLowerCase()].filter(Boolean),\n        person_name: personName,\n        company: company,\n        job_title: jobTitle,\n        scraped_by: 'n8n',\n        raw_data: post\n      }\n    });\n  }\n}\n\nreturn items;"
+      },
+      "id": "process-reddit",
+      "name": "Process Reddit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 500]
+    },
+    {
+      "parameters": {},
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1050, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/mentions",
+        "headers": {
+          "apikey": "={{ $env.SUPABASE_SERVICE_KEY }}",
+          "Authorization": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "bodyFields": {
+            "fields": [
+              {
+                "name": "title",
+                "value": "={{ $json.title }}"
+              },
+              {
+                "name": "content",
+                "value": "={{ $json.content }}"
+              },
+              {
+                "name": "url",
+                "value": "={{ $json.url }}"
+              },
+              {
+                "name": "source",
+                "value": "={{ $json.source }}"
+              },
+              {
+                "name": "source_type",
+                "value": "={{ $json.source_type }}"
+              },
+              {
+                "name": "author",
+                "value": "={{ $json.author }}"
+              },
+              {
+                "name": "published_at",
+                "value": "={{ $json.published_at }}"
+              },
+              {
+                "name": "sentiment",
+                "value": "={{ $json.sentiment }}"
+              },
+              {
+                "name": "sentiment_score",
+                "value": "={{ $json.sentiment_score }}"
+              },
+              {
+                "name": "keywords",
+                "value": "={{ JSON.stringify($json.keywords) }}"
+              },
+              {
+                "name": "person_name",
+                "value": "={{ $json.person_name }}"
+              },
+              {
+                "name": "company",
+                "value": "={{ $json.company }}"
+              },
+              {
+                "name": "job_title",
+                "value": "={{ $json.job_title }}"
+              },
+              {
+                "name": "scraped_by",
+                "value": "n8n"
+              },
+              {
+                "name": "raw_data",
+                "value": "={{ JSON.stringify($json.raw_data) }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "save-to-supabase",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/scraping_jobs",
+        "headers": {
+          "apikey": "={{ $env.SUPABASE_SERVICE_KEY }}",
+          "Authorization": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "bodyFields": {
+            "fields": [
+              {
+                "name": "person_name",
+                "value": "={{ $('Webhook Trigger').first().json.person_name }}"
+              },
+              {
+                "name": "company",
+                "value": "={{ $('Webhook Trigger').first().json.company }}"
+              },
+              {
+                "name": "job_title",
+                "value": "={{ $('Webhook Trigger').first().json.job_title }}"
+              },
+              {
+                "name": "search_queries",
+                "value": "={{ JSON.stringify(['Google News', 'HackerNews', 'Reddit']) }}"
+              },
+              {
+                "name": "status",
+                "value": "COMPLETED"
+              },
+              {
+                "name": "completed_at",
+                "value": "={{ new Date().toISOString() }}"
+              },
+              {
+                "name": "mentions_found",
+                "value": "={{ $('Merge Results').all().length }}"
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "log-job-completion",
+      "name": "Log Job Completion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 350]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search Queries": {
+      "main": [
+        [
+          {
+            "node": "Google News Scrape",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HackerNews Scrape",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reddit Scrape",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google News Scrape": {
+      "main": [
+        [
+          {
+            "node": "Process Google News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HackerNews Scrape": {
+      "main": [
+        [
+          {
+            "node": "Process HackerNews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit Scrape": {
+      "main": [
+        [
+          {
+            "node": "Process Reddit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Google News": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process HackerNews": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Process Reddit": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Log Job Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "createdAt": "2025-09-20T09:00:00.000Z",
+  "updatedAt": "2025-09-20T09:00:00.000Z",
+  "id": "repazoo-supabase-workflow"
+}
