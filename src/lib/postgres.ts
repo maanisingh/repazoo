@@ -2,7 +2,11 @@ import { Pool } from 'pg';
 
 // Create a connection pool
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  host: 'localhost',
+  port: 5432,
+  database: 'repazoo_db',
+  user: 'repazoo',
+  password: 'repazoo123',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,

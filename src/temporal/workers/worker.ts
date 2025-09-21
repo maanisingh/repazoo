@@ -1,6 +1,10 @@
+import { config } from 'dotenv';
 import { Worker } from '@temporalio/worker';
 import * as emailActivities from '../activities/email';
 import * as monitoringActivities from '../activities/monitoring';
+
+// Load environment variables
+config();
 
 export async function createWorker(): Promise<Worker> {
   const worker = await Worker.create({
