@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { mentionsService } from '../services/mentions.service.js';
+import { recommendationsService } from '../services/recommendations.service.js';
 import { query } from '../config/database.js';
 
 const router = Router();
@@ -217,6 +218,45 @@ router.get('/:mention_id', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get mention',
+    });
+  }
+});
+
+/**
+ * GET /api/mentions/recommendations
+ * Generate AI-powered personalized recommendations for improving reputation
+ */
+router.get('/recommendations', async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required',
+      });
+    }
+
+    console.log(`Generating recommendations for user: ${user_id}`);
+
+    const result = await recommendationsService.generateRecommendations(user_id as string);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.error || 'Failed to generate recommendations',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      recommendations: result.recommendations,
+    });
+  } catch (error) {
+    console.error('Generate recommendations error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate recommendations',
     });
   }
 });

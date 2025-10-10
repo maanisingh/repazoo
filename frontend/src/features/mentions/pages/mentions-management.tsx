@@ -105,8 +105,20 @@ export function MentionsManagement() {
     enabled: !!userId,
   });
 
-  // Mock recommendations - in production, this would come from AI service
-  const recommendations: Recommendation[] = [
+  // Fetch AI-generated personalized recommendations
+  const { data: recommendationsData, isLoading: isLoadingRecommendations } = useQuery({
+    queryKey: ['recommendations', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/mentions/recommendations?user_id=${userId}`);
+      if (!response.ok) throw new Error('Failed to fetch recommendations');
+      return response.json();
+    },
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Use AI recommendations or fallback to defaults
+  const recommendations: Recommendation[] = recommendationsData?.recommendations || [
     {
       id: '1',
       type: 'positive',
@@ -268,11 +280,17 @@ export function MentionsManagement() {
                 <CardTitle>Recommended Actions</CardTitle>
               </div>
               <CardDescription>
-                AI-powered suggestions to improve your Twitter reputation based on your scan purpose
+                AI-powered personalized suggestions to improve your Twitter reputation based on your scan purpose
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className='grid gap-4 md:grid-cols-2'>
+              {isLoadingRecommendations ? (
+                <div className='flex items-center justify-center py-8'>
+                  <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+                  <span className='ml-3 text-muted-foreground'>Generating personalized recommendations...</span>
+                </div>
+              ) : (
+                <div className='grid gap-4 md:grid-cols-2'>
                 {recommendations.map((rec) => (
                   <Card key={rec.id} className='border-l-4' style={{
                     borderLeftColor: rec.priority === 'high' ? '#ef4444' : rec.priority === 'medium' ? '#f97316' : '#3b82f6'
@@ -312,7 +330,8 @@ export function MentionsManagement() {
                     </CardContent>
                   </Card>
                 ))}
-              </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
