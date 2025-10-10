@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Loader2, Scan, Twitter, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Scan, Twitter, AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -37,11 +37,13 @@ import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { n8nClient } from '@/lib/api/repazoo-client'
 
 const newScanSchema = z.object({
   purpose: z.string().min(1, 'Purpose is required'),
   custom_context: z.string().optional(),
+  force_rescan: z.boolean().optional(),
 })
 
 type NewScanFormValues = z.infer<typeof newScanSchema>
@@ -69,6 +71,7 @@ function NewScanPage() {
     defaultValues: {
       purpose: 'visa',
       custom_context: '',
+      force_rescan: false,
     },
   })
 
@@ -104,6 +107,7 @@ function NewScanPage() {
         scan_id: scanId,
         purpose: data.purpose,
         custom_context: data.custom_context || '',
+        force_rescan: data.force_rescan || false,
       })
     },
     onSuccess: (response) => {
@@ -271,6 +275,32 @@ function NewScanPage() {
                       )}
                     />
                   )}
+
+                  {/* Force Rescan Checkbox */}
+                  <FormField
+                    control={form.control}
+                    name='force_rescan'
+                    render={({ field }) => (
+                      <FormItem className='flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4'>
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={!userData?.connected || createScanMutation.isPending || !!createdScanId}
+                          />
+                        </FormControl>
+                        <div className='space-y-1 leading-none'>
+                          <FormLabel className='flex items-center gap-2'>
+                            <RefreshCw className='h-4 w-4' />
+                            Force Full Rescan
+                          </FormLabel>
+                          <FormDescription>
+                            Ignore cached data and fetch all tweets fresh from Twitter. This will take longer but ensures you get the most up-to-date analysis.
+                          </FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
 
                   {/* Purpose Info Box */}
                   {purpose && (

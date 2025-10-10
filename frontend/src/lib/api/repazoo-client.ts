@@ -79,6 +79,7 @@ export interface CreateScanRequest {
   scan_id: string;
   purpose?: string;
   custom_context?: string;
+  force_rescan?: boolean;
 }
 
 export interface CreateScanResponse {
@@ -257,6 +258,7 @@ class RepazooClient {
         scan_id: data.scan_id,
         purpose: data.purpose || 'general',
         custom_context: data.custom_context || '',
+        force_rescan: data.force_rescan || false,
       }),
     });
 
