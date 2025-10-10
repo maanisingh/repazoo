@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   AudioWaveform,
   ShieldAlert,
+  MessageCircle,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 import { useAuthStore } from '@/stores/auth-store'
@@ -39,6 +40,11 @@ export function getSidebarData(): SidebarData {
           title: 'New Scan',
           url: '/scans/new',
           icon: Construction,
+        },
+        {
+          title: 'Mentions',
+          url: '/mentions',
+          icon: MessageCircle,
         },
       ],
     },
@@ -147,6 +153,11 @@ export const sidebarData: SidebarData = {
           title: 'New Scan',
           url: '/scans/new',
           icon: Construction,
+        },
+        {
+          title: 'Mentions',
+          url: '/mentions',
+          icon: MessageCircle,
         },
       ],
     },
