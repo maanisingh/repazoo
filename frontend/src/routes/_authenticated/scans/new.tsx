@@ -78,7 +78,7 @@ function NewScanPage() {
     mutationFn: async () => {
       const response = await n8nClient.connectTwitter({
         user_id: userId,
-        callback_url: `${window.location.origin}/api/twitter/oauth/callback`,
+        callback_url: 'https://cfy.repazoo.com/api/twitter/oauth/callback',
       })
       return response
     },

@@ -106,9 +106,9 @@ services:
       REDIS_URL: redis://redis:6379
       TWITTER_CLIENT_ID: ${TWITTER_CLIENT_ID}
       TWITTER_CLIENT_SECRET: ${TWITTER_CLIENT_SECRET}
-      TWITTER_CALLBACK_URL: ${TWITTER_CALLBACK_URL:-https://ntf.repazoo.com/api/twitter/oauth/callback}
+      TWITTER_CALLBACK_URL: ${TWITTER_CALLBACK_URL:-https://cfy.repazoo.com/api/twitter/oauth/callback}
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
-      FRONTEND_URL: ${FRONTEND_URL:-https://dash.repazoo.com}
+      FRONTEND_URL: ${FRONTEND_URL:-https://cfy.repazoo.com}
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: llama3:8b
     depends_on:

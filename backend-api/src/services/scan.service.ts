@@ -93,11 +93,10 @@ export class ScanService {
       const cacheStats = await analysisReuseService.getCacheStats(twitter_account_id);
       let newTweetsFetched = 0;
 
-      // STEP 2: Fetch tweets from Twitter if:
-      // - Cache needs refresh (24+ hours old)
-      // - OR we have a newest_tweet_id to fetch incremental updates
-      // - OR this is first time (no cached tweets yet)
-      const needsFetch = cacheStats.needs_refresh || cacheStats.newest_tweet_id || cacheStats.tweet_count === 0;
+      // STEP 2: ALWAYS fetch new tweets from Twitter
+      // This ensures we have the most up-to-date data for every scan
+      // We use incremental fetch (since_id) to only get new tweets since last sync
+      const needsFetch = true; // Always fetch to ensure fresh data
 
       if (needsFetch) {
         const actionMsg = cacheStats.tweet_count === 0 ? '📥 First-time fetch' : '🔄 Checking for new tweets';
