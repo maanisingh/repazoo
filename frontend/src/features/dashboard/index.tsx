@@ -28,6 +28,7 @@ import { ThemeSwitch } from '@/components/theme-switch'
 import { n8nClient } from '@/lib/api/repazoo-client'
 import { Overview } from './components/overview'
 import { RecentScans } from './components/recent-scans'
+import { CriticalMentions } from './components/critical-mentions'
 import { ScoreCircle } from '@/components/ui/score-circle'
 
 export function Dashboard() {
@@ -354,14 +355,30 @@ export function Dashboard() {
               <CardHeader>
                 <CardTitle>Your Reputation Score</CardTitle>
                 <CardDescription>
-                  Overall reputation score based on your latest scan
+                  Overall reputation score based on your latest scan (Higher is better)
                 </CardDescription>
               </CardHeader>
               <CardContent className='flex justify-center py-6'>
                 <ScoreCircle
-                  score={stats?.average_risk_score ? (100 - stats.average_risk_score) : 0}
+                  score={stats?.average_risk_score ? Math.round(stats.average_risk_score) : 0}
                   size='lg'
                 />
+              </CardContent>
+            </Card>
+
+            {/* Critical Mentions Table */}
+            <Card className='border-2 border-red-200 dark:border-red-900'>
+              <CardHeader>
+                <div className='flex items-center gap-2'>
+                  <AlertTriangle className='h-5 w-5 text-red-500' />
+                  <CardTitle>Critical Mentions - Action Required</CardTitle>
+                </div>
+                <CardDescription>
+                  High-risk mentions that need your immediate attention
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CriticalMentions />
               </CardContent>
             </Card>
 
