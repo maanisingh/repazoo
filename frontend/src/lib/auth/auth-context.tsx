@@ -27,10 +27,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedUser = localStorage.getItem('repazoo_user');
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+        // Ensure token is also stored separately for API client
+        if (userData.token) {
+          localStorage.setItem('repazoo_auth_token', userData.token);
+        }
       } catch (error) {
         console.error('Failed to parse stored user:', error);
         localStorage.removeItem('repazoo_user');
+        localStorage.removeItem('repazoo_auth_token');
       }
     }
     setIsLoading(false);
@@ -49,6 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       setUser(userData);
       localStorage.setItem('repazoo_user', JSON.stringify(userData));
+      // Also store token separately for API client
+      localStorage.setItem('repazoo_auth_token', response.token);
     } else {
       throw new Error(response.message || 'Login failed');
     }
@@ -69,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('repazoo_user');
+    localStorage.removeItem('repazoo_auth_token');
   };
 
   return (
