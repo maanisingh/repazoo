@@ -1,0 +1,22 @@
+# Repazoo Code Owners
+# These owners will be requested for review when someone opens a pull request
+
+# Default owners for everything in the repo
+* @maanisingh
+
+# Backend API
+/backend-api/ @maanisingh
+
+# Frontend
+/frontend/ @maanisingh
+
+# Database migrations (require extra careful review)
+/backend-api/migrations/ @maanisingh
+
+# Infrastructure and deployment
+/scripts/ @maanisingh
+Caddyfile @maanisingh
+docker-compose*.yml @maanisingh
+
+# CI/CD workflows
+/.github/workflows/ @maanisingh

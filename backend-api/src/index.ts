@@ -8,6 +8,7 @@ import scanRoutes from './routes/scan.routes.js';
 import mentionsRoutes from './routes/mentions.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import helpRoutes from './routes/help.routes.js';
+import healthRoutes from './routes/health.routes.js';
 
 // Import workers - they will start automatically when imported
 import './workers/scan.worker.js';
@@ -31,16 +32,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    environment: config.NODE_ENV,
-  });
-});
-
 // API Routes
+app.use('/api', healthRoutes);  // Health, readiness, and liveness checks
 app.use('/api/auth', authRoutes);
 app.use('/api/twitter', twitterRoutes);
 app.use('/api/scans', scanRoutes);
