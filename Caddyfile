@@ -1,0 +1,128 @@
+# Repazoo Twitter Analysis SaaS - Multi-Subdomain Configuration
+# Production deployment across dash, ntf, cfy, and ai subdomains
+
+{
+    email admin@repazoo.com
+}
+
+# Production Dashboard - dash.repazoo.com
+dash.repazoo.com {
+    # Backend API (Node.js BullMQ version on host network)
+    handle /api/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Dashboard - React SPA
+    handle {
+        root * /root/repazoo/frontend/dist
+        try_files {path} /index.html
+        file_server
+    }
+
+    encode gzip
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Staging/Notify - ntf.repazoo.com
+ntf.repazoo.com {
+    # Backend API (Node.js BullMQ version on host network)
+    handle /api/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Dashboard - React SPA
+    handle {
+        root * /root/repazoo/frontend/dist
+        try_files {path} /index.html
+        file_server
+    }
+
+    encode gzip
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Development/Confey - cfy.repazoo.com
+cfy.repazoo.com {
+    # Backend API (Node.js BullMQ version on host network)
+    handle /api/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Metabase Analytics
+    handle /analytics/* {
+        uri strip_prefix /analytics
+        reverse_proxy localhost:3004
+    }
+
+    # Dashboard - React SPA
+    handle {
+        root * /root/repazoo/frontend/dist
+        try_files {path} /index.html
+        file_server
+    }
+
+    encode gzip
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# AI Services - ai.repazoo.com
+ai.repazoo.com {
+    # LiteLLM Proxy
+    handle /v1/* {
+        reverse_proxy repazoo-litellm:4000
+    }
+
+    # Ollama API
+    handle /ollama/* {
+        uri strip_prefix /ollama
+        reverse_proxy repazoo-ollama:11434
+    }
+
+    # Flowise Visual Builder
+    handle /flowise/* {
+        uri strip_prefix /flowise
+        reverse_proxy repazoo-flowise:3000
+    }
+
+    # Open WebUI Chat Interface
+    handle {
+        reverse_proxy repazoo-open-webui:8080
+    }
+
+    encode gzip
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Database Admin - db.repazoo.com
+db.repazoo.com {
+    # Metabase Admin Interface
+    reverse_proxy localhost:3004
+
+    encode gzip
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Redirect HTTP to HTTPS
+:80 {
+    redir https://{host}{uri} permanent
+}

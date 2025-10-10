@@ -1,0 +1,246 @@
+{
+  "name": "Dashboard Stats",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "dashboard-stats",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-stats",
+      "name": "Webhook: Dashboard Stats",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "dashboard-stats"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total_scans FROM reputation_reports",
+        "options": {}
+      },
+      "id": "total-scans",
+      "name": "Total Scans",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as today_scans FROM reputation_reports WHERE DATE(created_at) = CURRENT_DATE",
+        "options": {}
+      },
+      "id": "today-scans",
+      "name": "Today's Scans",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT AVG(CAST(analysis_result->>'overall_score' AS INTEGER)) as avg_risk FROM reputation_reports WHERE analysis_result->>'overall_score' IS NOT NULL",
+        "options": {}
+      },
+      "id": "avg-risk",
+      "name": "Average Risk Score",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        440
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as high_risk_count FROM reputation_reports WHERE analysis_result->>'risk_level' IN ('high', 'critical')",
+        "options": {}
+      },
+      "id": "high-risk",
+      "name": "High Risk Accounts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        560
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-stats",
+      "name": "Merge Stats",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nlet totalScans = 0;\nlet todayScans = 0;\nlet avgRisk = 0;\nlet highRiskCount = 0;\n\nfor (const item of items) {\n  if (item.json.total_scans !== undefined) totalScans = item.json.total_scans;\n  if (item.json.today_scans !== undefined) todayScans = item.json.today_scans;\n  if (item.json.avg_risk !== undefined) avgRisk = Math.round(item.json.avg_risk);\n  if (item.json.high_risk_count !== undefined) highRiskCount = item.json.high_risk_count;\n}\n\nreturn [{\n  json: {\n    total_scans: totalScans,\n    today_scans: todayScans,\n    average_risk_score: avgRisk,\n    high_risk_accounts: highRiskCount\n  }\n}];"
+      },
+      "id": "combine-stats",
+      "name": "Combine Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, stats: $json } }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: Dashboard Stats": {
+      "main": [
+        [
+          {
+            "node": "Total Scans",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Today's Scans",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Average Risk Score",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "High Risk Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Total Scans": {
+      "main": [
+        [
+          {
+            "node": "Merge Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Today's Scans": {
+      "main": [
+        [
+          {
+            "node": "Merge Stats",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Average Risk Score": {
+      "main": [
+        [
+          {
+            "node": "Merge Stats",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "High Risk Accounts": {
+      "main": [
+        [
+          {
+            "node": "Merge Stats",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Stats": {
+      "main": [
+        [
+          {
+            "node": "Combine Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Stats": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

@@ -1,0 +1,124 @@
+{
+  "name": "Twitter OAuth - Callback Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "twitter/oauth/callback",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-callback",
+      "name": "Webhook: OAuth Callback",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "twitter-oauth-callback"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cfy.repazoo.com/api/twitter/oauth/callback",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "oauth_token",
+              "value": "={{ $json.query.oauth_token }}"
+            },
+            {
+              "name": "oauth_verifier",
+              "value": "={{ $json.query.oauth_verifier }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "exchange-token",
+      "name": "Exchange OAuth Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE users SET twitter_oauth_token = '{{ $json.access_token }}', twitter_oauth_secret = '{{ $json.access_token_secret }}', twitter_handle = '{{ $json.screen_name }}', updated_at = NOW() WHERE id = {{ $json.user_id }} RETURNING id, email, twitter_handle",
+        "options": {}
+      },
+      "id": "save-tokens",
+      "name": "Save OAuth Tokens",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: 'Twitter account connected successfully', twitter_handle: $('Exchange OAuth Token').item.json.screen_name } }}"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: OAuth Callback": {
+      "main": [
+        [
+          {
+            "node": "Exchange OAuth Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exchange OAuth Token": {
+      "main": [
+        [
+          {
+            "node": "Save OAuth Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save OAuth Tokens": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

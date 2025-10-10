@@ -1,0 +1,53 @@
+{
+  "name": "Twitter OAuth - Connect Account",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twitter/oauth/connect",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-oauth-connect",
+      "name": "Webhook: OAuth Connect",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "twitter-oauth-connect"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, error: 'Twitter OAuth backend is not currently running. Please contact support to enable Twitter integration.' } }}"
+      },
+      "id": "temp-response",
+      "name": "Temporary Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: OAuth Connect": {
+      "main": [
+        [
+          {
+            "node": "Temporary Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

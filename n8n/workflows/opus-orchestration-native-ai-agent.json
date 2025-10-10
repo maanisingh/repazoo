@@ -1,0 +1,304 @@
+{
+  "name": "Opus Orchestration - Native n8n AI Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twitter-reputation-scan",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Scan Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "twitter-reputation-scan"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://cfy.repazoo.com/api/twitter/posts?handle={{ $json.twitter_handle }}&limit=100",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "fetch-twitter-data",
+      "name": "Fetch Twitter Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "text": "={{ \"Analyze this Twitter account for reputation risks:\\n\\nHandle: \" + $json.twitter_handle + \"\\n\\nRecent Posts:\\n\" + JSON.stringify($('Fetch Twitter Posts').all()) }}",
+        "options": {
+          "systemMessage": "You are the Opus Orchestrator for Repazoo SaaS. Your role is to coordinate 5 specialist AI agents to analyze Twitter accounts for reputation risks.\\n\\nYou have access to:\\n1. Sentiment Analysis Tool\\n2. Toxicity Detection Tool\\n3. Hate Speech Detection Tool\\n4. Risk Assessment Tool\\n5. Compliance Check Tool\\n\\nAnalyze the provided Twitter data and create a comprehensive reputation report.\\n\\nOutput JSON format:\\n{\\n  \\\"overall_score\\\": 0-100,\\n  \\\"risk_level\\\": \\\"low/medium/high/critical\\\",\\n  \\\"sentiment\\\": {\\\"positive\\\": %, \\\"neutral\\\": %, \\\"negative\\\": %},\\n  \\\"toxicity_score\\\": 0-100,\\n  \\\"hate_speech_detected\\\": true/false,\\n  \\\"key_findings\\\": [],\\n  \\\"recommendations\\\": []\\n}"
+        }
+      },
+      "id": "opus-orchestrator-agent",
+      "name": "Opus: Master Orchestrator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3:8b",
+        "options": {
+          "baseURL": "http://ollama:11434",
+          "temperature": 0.7
+        }
+      },
+      "id": "ollama-llama3-model",
+      "name": "Ollama: Llama3 8B",
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "name": "sentiment_analysis",
+        "description": "Analyzes sentiment of tweets (positive, neutral, negative percentages)"
+      },
+      "id": "sentiment-tool",
+      "name": "Tool: Sentiment Analysis",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "name": "toxicity_detection",
+        "description": "Detects toxic and offensive content in tweets (score 0-100)"
+      },
+      "id": "toxicity-tool",
+      "name": "Tool: Toxicity Detection",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "name": "hate_speech_check",
+        "description": "Identifies hate speech and discrimination in tweets"
+      },
+      "id": "hate-speech-tool",
+      "name": "Tool: Hate Speech Detection",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "name": "risk_assessment",
+        "description": "Calculates overall reputation risk (low/medium/high/critical)"
+      },
+      "id": "risk-tool",
+      "name": "Tool: Risk Assessment",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "name": "compliance_check",
+        "description": "Checks for policy violations and provides recommendations"
+      },
+      "id": "compliance-tool",
+      "name": "Tool: Compliance Monitor",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "reputation_reports",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "scan_id": "={{ $('Webhook: Scan Request').item.json.scan_id }}",
+            "user_id": "={{ $('Webhook: Scan Request').item.json.user_id }}",
+            "twitter_handle": "={{ $('Webhook: Scan Request').item.json.twitter_handle }}",
+            "analysis_result": "={{ $json.output }}",
+            "created_at": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "save-to-database",
+      "name": "Save Results to DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'success', scan_id: $('Webhook: Scan Request').item.json.scan_id, result: $json.output } }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: Scan Request": {
+      "main": [
+        [
+          {
+            "node": "Fetch Twitter Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Twitter Posts": {
+      "main": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opus: Master Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Save Results to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Llama3 8B": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Sentiment Analysis": {
+      "ai_tool": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Toxicity Detection": {
+      "ai_tool": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Hate Speech Detection": {
+      "ai_tool": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Risk Assessment": {
+      "ai_tool": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Compliance Monitor": {
+      "ai_tool": [
+        [
+          {
+            "node": "Opus: Master Orchestrator",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Results to DB": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

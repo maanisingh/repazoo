@@ -1,0 +1,81 @@
+[
+  {
+    "parameters": {
+      "httpMethod": "GET",
+      "path": "user/twitter-status/:user_id",
+      "responseMode": "responseNode",
+      "options": {}
+    },
+    "id": "webhook-user-status",
+    "name": "Webhook",
+    "type": "n8n-nodes-base.webhook",
+    "typeVersion": 1.1,
+    "position": [
+      240,
+      300
+    ]
+  },
+  {
+    "parameters": {
+      "assignments": {
+        "assignments": [
+          {
+            "id": "user_id",
+            "name": "user_id",
+            "value": "={{ $json.params.user_id }}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "id": "extract-user-id",
+    "name": "Extract User ID",
+    "type": "n8n-nodes-base.set",
+    "typeVersion": 3.3,
+    "position": [
+      460,
+      300
+    ]
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "SELECT id, email, twitter_handle, twitter_user_id, twitter_oauth_token FROM users WHERE id = '{{ $json.user_id }}'::uuid LIMIT 1"
+    },
+    "id": "get-user-data",
+    "name": "Get User Data",
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.4,
+    "position": [
+      680,
+      300
+    ]
+  },
+  {
+    "parameters": {
+      "jsCode": "const user = $input.item.json;\nconst connected = !!(user.twitter_oauth_token && user.twitter_handle);\nreturn { success: true, connected, twitter_handle: user.twitter_handle || null, twitter_user_id: user.twitter_user_id || null };"
+    },
+    "id": "format-response",
+    "name": "Format Response",
+    "type": "n8n-nodes-base.code",
+    "typeVersion": 2,
+    "position": [
+      900,
+      300
+    ]
+  },
+  {
+    "parameters": {
+      "respondWith": "json",
+      "responseBody": "={{ $json }}"
+    },
+    "id": "return-response",
+    "name": "Return Response",
+    "type": "n8n-nodes-base.respondToWebhook",
+    "typeVersion": 1,
+    "position": [
+      1120,
+      300
+    ]
+  }
+]

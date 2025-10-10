@@ -1,0 +1,210 @@
+{
+  "name": "Twitter Fetch Mentions with Media",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fetch-mentions",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-start",
+      "name": "Webhook - Fetch Mentions",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const userId = $json.body.user_id;\nconst twitterUserId = $json.body.twitter_user_id;\nconst maxResults = $json.body.max_results || 100;\n\nreturn {\n  json: {\n    user_id: userId,\n    twitter_user_id: twitterUserId,\n    max_results: maxResults,\n    scan_id: `scan_${Date.now()}`,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "extract-params",
+      "name": "Extract Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "=https://api.twitter.com/2/users/{{ $json.twitter_user_id }}/mentions",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "max_results",
+              "value": "={{ $json.max_results }}"
+            },
+            {
+              "name": "tweet.fields",
+              "value": "created_at,public_metrics,entities,referenced_tweets,attachments,author_id,conversation_id,in_reply_to_user_id"
+            },
+            {
+              "name": "media.fields",
+              "value": "url,preview_image_url,type,width,height,alt_text,media_key,duration_ms,public_metrics"
+            },
+            {
+              "name": "expansions",
+              "value": "attachments.media_keys,author_id,referenced_tweets.id"
+            },
+            {
+              "name": "user.fields",
+              "value": "username,name,profile_image_url,verified,public_metrics"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-mentions",
+      "name": "Fetch Mentions from Twitter API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "twitter-bearer",
+          "name": "Twitter Bearer Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract mentions, media, and user data from Twitter API response\nconst response = $json;\nconst mentions = response.data || [];\nconst includes = response.includes || {};\nconst mediaMap = {};\nconst usersMap = {};\n\n// Build media lookup map\nif (includes.media) {\n  includes.media.forEach(media => {\n    mediaMap[media.media_key] = media;\n  });\n}\n\n// Build users lookup map\nif (includes.users) {\n  includes.users.forEach(user => {\n    usersMap[user.id] = user;\n  });\n}\n\n// Process each mention\nconst processedMentions = mentions.map(mention => {\n  const author = usersMap[mention.author_id] || {};\n  const mediaAttachments = [];\n\n  // Extract media if present\n  if (mention.attachments && mention.attachments.media_keys) {\n    mention.attachments.media_keys.forEach((mediaKey, index) => {\n      const media = mediaMap[mediaKey];\n      if (media) {\n        mediaAttachments.push({\n          media_key: media.media_key,\n          media_type: media.type,\n          media_url: media.url || media.preview_image_url,\n          preview_image_url: media.preview_image_url,\n          width: media.width,\n          height: media.height,\n          alt_text: media.alt_text,\n          display_order: index,\n          duration_ms: media.duration_ms\n        });\n      }\n    });\n  }\n\n  return {\n    user_id: items[0].json.user_id,\n    tweet_id: mention.id,\n    author_id: mention.author_id,\n    author_username: author.username || 'unknown',\n    author_display_name: author.name,\n    author_verified: author.verified || false,\n    author_followers_count: author.public_metrics?.followers_count || 0,\n    author_profile_image_url: author.profile_image_url,\n    tweet_text: mention.text,\n    tweet_created_at: mention.created_at,\n    retweet_count: mention.public_metrics?.retweet_count || 0,\n    reply_count: mention.public_metrics?.reply_count || 0,\n    like_count: mention.public_metrics?.like_count || 0,\n    quote_count: mention.public_metrics?.quote_count || 0,\n    view_count: mention.public_metrics?.impression_count || 0,\n    bookmark_count: mention.public_metrics?.bookmark_count || 0,\n    conversation_id: mention.conversation_id,\n    in_reply_to_user_id: mention.in_reply_to_user_id,\n    is_retweet: mention.referenced_tweets?.some(ref => ref.type === 'retweeted') || false,\n    is_quote: mention.referenced_tweets?.some(ref => ref.type === 'quoted') || false,\n    tweet_url: `https://twitter.com/${author.username}/status/${mention.id}`,\n    media: mediaAttachments,\n    has_media: mediaAttachments.length > 0,\n    media_count: mediaAttachments.length,\n    scan_id: items[0].json.scan_id\n  };\n});\n\nreturn processedMentions.map(m => ({ json: m }));"
+      },
+      "id": "process-mentions",
+      "name": "Process Mentions and Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT upsert_mention(\n  '{{ $json.user_id }}'::UUID,\n  '{{ $json.tweet_id }}',\n  '{{ $json.author_id }}',\n  '{{ $json.author_username }}',\n  '{{ $json.author_display_name }}',\n  $1,\n  '{{ $json.tweet_created_at }}'::TIMESTAMPTZ,\n  {{ $json.retweet_count }},\n  {{ $json.reply_count }},\n  {{ $json.like_count }},\n  {{ $json.quote_count }},\n  {{ $json.view_count }},\n  ({{ $json.like_count }} + {{ $json.retweet_count }} * 2 + {{ $json.reply_count }} * 1.5)::DECIMAL\n) AS mention_id",
+        "additionalFields": {
+          "mode": "single"
+        },
+        "options": {}
+      },
+      "id": "save-mention",
+      "name": "Save Mention to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1120, 300],
+      "credentials": {
+        "postgres": {
+          "id": "repazoo-postgres",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare media inserts for this mention\nconst mentionId = $json.mention_id;\nconst mediaArray = items[0].json.media || [];\n\nif (mediaArray.length === 0) {\n  return [];\n}\n\nreturn mediaArray.map(media => ({\n  json: {\n    mention_id: mentionId,\n    ...media\n  }\n}));"
+      },
+      "id": "prepare-media",
+      "name": "Prepare Media Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "tweet_media",
+        "columns": "mention_id,media_key,media_type,media_url,preview_image_url,width,height,alt_text,display_order,duration_ms",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "save-media",
+      "name": "Save Media to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1560, 300],
+      "credentials": {
+        "postgres": {
+          "id": "repazoo-postgres",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO mentions_scan_history (user_id, scan_type, query_used, max_results, start_time, end_time, mentions_found, new_mentions, status) VALUES ('{{ items[0].json.user_id }}'::UUID, 'manual', 'mentions', {{ items[0].json.max_results }}, '{{ items[0].json.timestamp }}'::TIMESTAMPTZ, NOW(), {{ $json.length }}, {{ $json.length }}, 'completed') RETURNING id",
+        "options": {}
+      },
+      "id": "save-scan-history",
+      "name": "Save Scan History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1780, 300],
+      "credentials": {
+        "postgres": {
+          "id": "repazoo-postgres",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const totalMentions = items.length;\nconst withMedia = items.filter(i => i.json.has_media).length;\nconst totalMedia = items.reduce((sum, i) => sum + (i.json.media_count || 0), 0);\n\nreturn {\n  json: {\n    status: 'success',\n    scan_id: items[0].json.scan_id,\n    mentions_fetched: totalMentions,\n    mentions_with_media: withMedia,\n    total_media_items: totalMedia,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-response",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Fetch Mentions": {
+      "main": [[{ "node": "Extract Parameters", "type": "main", "index": 0 }]]
+    },
+    "Extract Parameters": {
+      "main": [[{ "node": "Fetch Mentions from Twitter API", "type": "main", "index": 0 }]]
+    },
+    "Fetch Mentions from Twitter API": {
+      "main": [[{ "node": "Process Mentions and Media", "type": "main", "index": 0 }]]
+    },
+    "Process Mentions and Media": {
+      "main": [[{ "node": "Save Mention to Database", "type": "main", "index": 0 }]]
+    },
+    "Save Mention to Database": {
+      "main": [[{ "node": "Prepare Media Records", "type": "main", "index": 0 }]]
+    },
+    "Prepare Media Records": {
+      "main": [[{ "node": "Save Media to Database", "type": "main", "index": 0 }]]
+    },
+    "Save Media to Database": {
+      "main": [[{ "node": "Save Scan History", "type": "main", "index": 0 }]]
+    },
+    "Save Scan History": {
+      "main": [[{ "node": "Format Success Response", "type": "main", "index": 0 }]]
+    },
+    "Format Success Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["twitter", "mentions", "media"],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-09T11:30:00.000Z",
+  "versionId": "1"
+}

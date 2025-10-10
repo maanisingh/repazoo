@@ -1,0 +1,124 @@
+{
+  "name": "Twitter - Get My Posts",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "twitter/my-posts/:userId",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-my-posts",
+      "name": "Webhook: Get My Posts",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "twitter-my-posts"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT twitter_oauth_token, twitter_oauth_secret, twitter_handle FROM users WHERE id = {{ $parameter.userId }}",
+        "options": {}
+      },
+      "id": "get-user-tokens",
+      "name": "Get User OAuth Tokens",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://cfy.repazoo.com/api/twitter/user-timeline?handle={{ $json.twitter_handle }}&limit=200",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Twitter-Token",
+              "value": "={{ $json.twitter_oauth_token }}"
+            },
+            {
+              "name": "X-Twitter-Secret",
+              "value": "={{ $json.twitter_oauth_secret }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-tweets",
+      "name": "Fetch My Tweets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, twitter_handle: $('Get User OAuth Tokens').item.json.twitter_handle, total_tweets: $json.tweets.length, tweets: $json.tweets } }}"
+      },
+      "id": "success-response",
+      "name": "Return Tweets",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: Get My Posts": {
+      "main": [
+        [
+          {
+            "node": "Get User OAuth Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User OAuth Tokens": {
+      "main": [
+        [
+          {
+            "node": "Fetch My Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch My Tweets": {
+      "main": [
+        [
+          {
+            "node": "Return Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

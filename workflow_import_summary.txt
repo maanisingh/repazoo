@@ -1,0 +1,142 @@
+========================================
+n8n Workflow Import Summary Report
+========================================
+Date: $(date '+%Y-%m-%d %H:%M:%S')
+n8n Instance: https://wf.repazoo.com
+
+========================================
+IMPORT RESULTS
+========================================
+
+Total workflows found in directory:     14
+Successfully imported workflows:        14
+Failed imports:                          0
+Active workflows:                       15 (includes duplicates)
+
+========================================
+WORKFLOW LIST
+========================================
+
+1. Dashboard Stats
+   - Status: Active
+   - ID: mr65na60hvZ71jsQ
+   - Description: Provides statistics for dashboard
+
+2. Get All Scans
+   - Status: Active
+   - ID: UkJcFMrrFx4m71yk
+   - Description: Retrieves all reputation scan records
+
+3. Get Scan By ID
+   - Status: Active
+   - ID: vcT0JMcOp8AAPlgw
+   - Description: Retrieves specific scan by ID
+
+4. Opus Orchestration - Native n8n AI Agent (Instance 1)
+   - Status: Active
+   - ID: E6Pxh5oFd2fJkRVg
+   - Description: AI agent for Twitter reputation analysis
+
+5. Opus Orchestration - Native n8n AI Agent (Instance 2)
+   - Status: Active
+   - ID: lNmpWHKFkZulR31D
+   - Description: AI agent for Twitter reputation analysis (duplicate)
+
+6. Opus Orchestration - Twitter Reputation Analysis
+   - Status: Active
+   - ID: uoIGlvXTHDU9ONpi
+   - Description: Multi-agent Twitter reputation analysis with specialist coordination
+
+7. Password Reset Request
+   - Status: Active
+   - ID: FmuM78JmvAmY3Q3L
+   - Description: Handles user password reset requests
+
+8. Save User Purpose
+   - Status: Active
+   - ID: ez1mYK1lUTQ2vehq
+   - Description: Saves user purpose and category
+
+9. Twitter - Delete Tweet
+   - Status: Active
+   - ID: AqRn70RD92LyqxRu
+   - Description: Deletes tweets via backend API
+
+10. Twitter - Get My Posts
+    - Status: Active
+    - ID: Xy9QzEP4uphdLHGg
+    - Description: Retrieves user's Twitter posts
+
+11. Twitter OAuth - Callback Handler
+    - Status: Active
+    - ID: e7W1wmzVEbVviA3s
+    - Description: Handles Twitter OAuth callback
+
+12. Twitter OAuth - Connect Account
+    - Status: Active
+    - ID: LttdmfOMSXLkzd2Z
+    - Description: Initiates Twitter OAuth connection
+
+13. Twitter - Post Tweet
+    - Status: Active
+    - ID: RggSoHo9Um2cCYyO
+    - Description: Posts tweets via backend API
+
+14. User Login
+    - Status: Active
+    - ID: iPqR8zszV06z6cmu
+    - Description: User authentication workflow
+
+15. User Registration
+    - Status: Active
+    - ID: BHCOO5n9jK0osoko
+    - Description: User registration workflow
+
+========================================
+NOTES
+========================================
+
+1. All 14 workflow files from /root/repazoo/n8n/workflows/ 
+   have been successfully imported
+
+2. There are 2 instances of "Opus Orchestration - Native n8n AI Agent"
+   (IDs: E6Pxh5oFd2fJkRVg and lNmpWHKFkZulR31D)
+   - These appear to be duplicates and you may want to deactivate one
+
+3. The "Opus Orchestration - Twitter Reputation Analysis" workflow 
+   was newly imported during this session
+
+4. All workflows are currently ACTIVE
+
+5. The import script handles read-only fields (updatedAt, versionId, 
+   triggerCount, tags) by removing them before import
+
+========================================
+WORKFLOW CATEGORIES
+========================================
+
+User Management (3):
+- User Registration
+- User Login
+- Password Reset Request
+- Save User Purpose
+
+Twitter Operations (5):
+- Twitter - Post Tweet
+- Twitter - Delete Tweet
+- Twitter - Get My Posts
+- Twitter OAuth - Connect Account
+- Twitter OAuth - Callback Handler
+
+Reputation Analysis (3):
+- Opus Orchestration - Native n8n AI Agent (x2)
+- Opus Orchestration - Twitter Reputation Analysis
+
+Data Retrieval (3):
+- Get All Scans
+- Get Scan By ID
+- Dashboard Stats
+
+========================================
+END OF REPORT
+========================================

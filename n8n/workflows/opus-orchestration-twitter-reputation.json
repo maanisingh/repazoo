@@ -1,0 +1,349 @@
+{
+  "name": "Opus Orchestration - Twitter Reputation Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twitter-reputation-scan",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract Twitter handle and user ID from webhook\nconst twitterHandle = $input.item.json.twitter_handle;\nconst userId = $input.item.json.user_id;\nconst scanId = $input.item.json.scan_id;\n\nreturn {\n  json: {\n    twitter_handle: twitterHandle,\n    user_id: userId,\n    scan_id: scanId,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "extract-params",
+      "name": "Extract Parameters",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.CFY_API_URL }}/api/twitter/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "handle",
+              "value": "={{ $json.twitter_handle }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-tweets",
+      "name": "Fetch Twitter Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://litellm:4000/v1/chat/completions",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "opus-orchestrator"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{\"role\": \"user\", \"content\": $json.prompt}] }}"
+            }
+          ]
+        }
+      },
+      "id": "opus-orchestrator",
+      "name": "Opus Orchestrator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        850,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "litellm-api-key",
+          "name": "LiteLLM API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://litellm:4000/v1/chat/completions",
+        "method": "POST"
+      },
+      "id": "sentiment-analyst",
+      "name": "Sentiment Analyst (Specialist 1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://litellm:4000/v1/chat/completions",
+        "method": "POST"
+      },
+      "id": "toxicity-detector",
+      "name": "Toxicity Detector (Specialist 2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://litellm:4000/v1/chat/completions",
+        "method": "POST"
+      },
+      "id": "hate-detector",
+      "name": "Hate Speech Detector (Specialist 3)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://litellm:4000/v1/chat/completions",
+        "method": "POST"
+      },
+      "id": "risk-assessor",
+      "name": "Risk Assessor (Specialist 4)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1250,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://litellm:4000/v1/chat/completions",
+        "method": "POST"
+      },
+      "id": "compliance-monitor",
+      "name": "Compliance Monitor (Specialist 5)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1250,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Aggregate all specialist results\nconst sentiment = $('Sentiment Analyst (Specialist 1)').item.json;\nconst toxicity = $('Toxicity Detector (Specialist 2)').item.json;\nconst hate = $('Hate Speech Detector (Specialist 3)').item.json;\nconst risk = $('Risk Assessor (Specialist 4)').item.json;\nconst compliance = $('Compliance Monitor (Specialist 5)').item.json;\n\n// Calculate overall reputation score\nlet score = 100;\nscore -= (100 - sentiment.sentiment_scores.positive);\nscore -= toxicity.toxicity_score;\nscore -= hate.hate_speech_detected ? 30 : 0;\nscore = Math.max(0, Math.min(100, score));\n\nreturn {\n  json: {\n    scan_id: $('Extract Parameters').item.json.scan_id,\n    user_id: $('Extract Parameters').item.json.user_id,\n    twitter_handle: $('Extract Parameters').item.json.twitter_handle,\n    overall_score: Math.round(score),\n    risk_level: risk.risk_level,\n    sentiment: sentiment,\n    toxicity: toxicity,\n    hate_speech: hate,\n    risk_assessment: risk,\n    compliance: compliance,\n    timestamp: new Date().toISOString(),\n    analyzed_by: 'opus-orchestration-v1'\n  }\n};"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO reputation_reports (scan_id, user_id, twitter_handle, overall_score, risk_level, sentiment_data, toxicity_data, hate_speech_data, risk_data, compliance_data, analyzed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        "options": {}
+      },
+      "id": "save-to-database",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1850,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parameters": {
+      "main": [
+        [
+          {
+            "node": "Fetch Twitter Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Twitter Posts": {
+      "main": [
+        [
+          {
+            "node": "Opus Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opus Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Sentiment Analyst (Specialist 1)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Toxicity Detector (Specialist 2)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hate Speech Detector (Specialist 3)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sentiment Analyst (Specialist 1)": {
+      "main": [
+        [
+          {
+            "node": "Risk Assessor (Specialist 4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Toxicity Detector (Specialist 2)": {
+      "main": [
+        [
+          {
+            "node": "Risk Assessor (Specialist 4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hate Speech Detector (Specialist 3)": {
+      "main": [
+        [
+          {
+            "node": "Compliance Monitor (Specialist 5)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Assessor (Specialist 4)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compliance Monitor (Specialist 5)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}

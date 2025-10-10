@@ -1,0 +1,85 @@
+{
+  "name": "Get All Scans",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "get-scans",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-get-scans",
+      "name": "Webhook: Get Scans",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "get-scans"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, scan_id, user_id, twitter_handle, status, created_at, completed_at, \n       jsonb_build_object(\n         'overall_score', analysis_result->>'overall_score',\n         'risk_level', analysis_result->>'risk_level',\n         'toxicity_score', analysis_result->>'toxicity_score'\n       ) as summary\nFROM reputation_reports \nORDER BY created_at DESC \nLIMIT 100",
+        "options": {}
+      },
+      "id": "postgres-query",
+      "name": "PostgreSQL: Get All Scans",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, total: $json.length, scans: $input.all() } }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: Get Scans": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Get All Scans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get All Scans": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

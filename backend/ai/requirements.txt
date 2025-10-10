@@ -1,0 +1,48 @@
+# Repazoo AI Analysis Module Dependencies
+# LangChain and AI Models
+
+# Core LangChain
+langchain==0.1.0
+langchain-core==0.1.10
+langchain-anthropic==0.1.1
+
+# Anthropic Claude
+anthropic==0.18.1
+
+# Pydantic for schemas
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Async support
+asyncio==3.4.3
+aiohttp==3.9.1
+
+# Data processing
+python-dateutil==2.8.2
+
+# Retry logic
+tenacity==8.2.3
+
+# JSON handling
+orjson==3.9.12
+
+# Logging
+structlog==23.3.0
+
+# Optional: Enhanced text processing
+nltk==3.8.1
+spacy==3.7.2
+
+# Optional: Rate limiting
+ratelimit==2.2.1
+
+# Testing dependencies (dev)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+pytest-cov==4.1.0
+factory-boy==3.3.0
+
+# Type checking (dev)
+mypy==1.7.1
+types-python-dateutil==2.8.19

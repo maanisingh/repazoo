@@ -1,0 +1,134 @@
+# Prefect 2.x Deployment Configuration
+# Schedules and configurations for all Repazoo workflows
+
+deployments:
+  # Data Retention Cleanup - Daily at 3 AM UTC
+  - name: data-retention-cleanup
+    version: 1.0.0
+    description: "Automated data retention and deletion (GDPR/CCPA compliance)"
+    flow_name: scheduled_data_retention
+    work_pool_name: repazoo-workflows
+    schedule:
+      cron: "0 3 * * *"  # Daily at 3 AM UTC
+      timezone: "UTC"
+    parameters:
+      retention_days: 90
+      grace_period_days: 30
+      soft_delete_retention_days: 30
+    tags:
+      - compliance
+      - gdpr
+      - ccpa
+      - retention
+
+  # Monitoring and Alerts - Every 5 minutes
+  - name: monitoring-and-alerts
+    version: 1.0.0
+    description: "Real-time compliance and security monitoring"
+    flow_name: scheduled_monitoring
+    work_pool_name: repazoo-workflows
+    schedule:
+      interval: 300  # 5 minutes in seconds
+      timezone: "UTC"
+    tags:
+      - monitoring
+      - compliance
+      - security
+      - alerts
+
+  # Twitter Ingestion - On-demand only
+  - name: twitter-ingestion
+    version: 1.0.0
+    description: "Fetch Twitter data with consent verification and rate limiting"
+    flow_name: on_demand_twitter_ingestion
+    work_pool_name: repazoo-workflows
+    # No schedule - triggered on-demand via API
+    tags:
+      - twitter
+      - ingestion
+      - on-demand
+
+  # AI Sentiment Analysis - On-demand only
+  - name: ai-sentiment-analysis
+    version: 1.0.0
+    description: "AI sentiment analysis with PII protection and quota enforcement"
+    flow_name: on_demand_ai_analysis
+    work_pool_name: repazoo-workflows
+    # No schedule - triggered on-demand via API
+    tags:
+      - ai
+      - anthropic
+      - sentiment
+      - on-demand
+
+  # User Data Export - On-demand only (GDPR/CCPA)
+  - name: user-data-export
+    version: 1.0.0
+    description: "User data export for GDPR Article 20 and CCPA compliance"
+    flow_name: on_demand_data_export
+    work_pool_name: repazoo-workflows
+    # No schedule - triggered by user request
+    tags:
+      - gdpr
+      - ccpa
+      - data-export
+      - on-demand
+
+# Work Pool Configuration
+work_pools:
+  - name: repazoo-workflows
+    type: process
+    concurrency_limit: 10
+    description: "Main work pool for Repazoo compliance workflows"
+
+# Global Settings
+settings:
+  # Logging
+  logging_level: INFO
+  log_to_cloud: true
+
+  # Retries
+  max_retries: 3
+  retry_delay_seconds: 60
+
+  # Timeouts
+  default_timeout_seconds: 600  # 10 minutes
+
+  # Concurrency
+  max_concurrent_flows: 10
+  max_concurrent_task_runs: 50
+
+# Environment Variables Required
+environment:
+  required:
+    - DATABASE_URL
+    - REDIS_URL
+    - ENCRYPTION_KEY
+    - TWITTER_CLIENT_ID
+    - TWITTER_CLIENT_SECRET
+    - ANTHROPIC_API_KEY
+  optional:
+    - PREFECT_API_URL
+    - PREFECT_API_KEY
+    - ALERT_EMAIL
+    - ALERT_SLACK_WEBHOOK
+
+# Notifications
+notifications:
+  - name: compliance-critical-alerts
+    enabled: true
+    flow_run_states:
+      - Failed
+      - Crashed
+    flow_names:
+      - data_retention_cleanup
+      - monitoring
+    # Configure email/Slack in Prefect UI
+
+  - name: rate-limit-warnings
+    enabled: true
+    flow_run_states:
+      - Failed
+    flow_names:
+      - twitter_ingestion
+      - ai_analysis

@@ -1,0 +1,217 @@
+{
+  "name": "Twitter Reputation Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-reputation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook - Start Analysis",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const userId = $json.body.user_id;\nconst twitterHandle = $json.body.twitter_handle;\n\nreturn {\n  json: {\n    user_id: userId,\n    twitter_handle: twitterHandle,\n    scan_id: `scan_${Date.now()}`,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "extract",
+      "name": "Extract Request Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "https://api.twitter.com/2/users/by/username/={{ $json.twitter_handle }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "user.fields",
+              "value": "created_at,description,public_metrics,verified"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-user",
+      "name": "Get Twitter User Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "twitter-bearer",
+          "name": "Twitter Bearer Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "=https://api.twitter.com/2/users/{{ $json.data.id }}/tweets",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "max_results",
+              "value": "100"
+            },
+            {
+              "name": "tweet.fields",
+              "value": "created_at,public_metrics,entities,referenced_tweets"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-tweets",
+      "name": "Get User Tweets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "twitter-bearer",
+          "name": "Twitter Bearer Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const tweets = $json.data || [];\nconst userInfo = $('Get Twitter User Info').first().json.data;\n\nconst tweetTexts = tweets.map(t => t.text).join('\\n\\n');\n\nconst prompt = `You are a visa reputation analyst. Analyze this Twitter account for reputation risks relevant to visa applications.\n\nUser Profile:\n- Handle: @${userInfo.username}\n- Bio: ${userInfo.description}\n- Followers: ${userInfo.public_metrics.followers_count}\n- Following: ${userInfo.public_metrics.following_count}\n- Verified: ${userInfo.verified}\n\nRecent Tweets (${tweets.length}):\n${tweetTexts}\n\nProvide a comprehensive analysis in JSON format with:\n1. risk_score (0-100, where 100 is highest risk)\n2. political_bias (left/center/right/unknown)\n3. extremism_flags (array of concerning topics/phrases)\n4. associations (array of problematic accounts/groups mentioned)\n5. language_concerns (inappropriate language, hate speech, etc.)\n6. overall_assessment (2-3 sentence summary)\n7. recommendations (array of specific concerns for visa officers)\n\nReturn ONLY valid JSON, no markdown.`;\n\nreturn {\n  json: {\n    ...items[0].json,\n    prompt: prompt,\n    tweet_count: tweets.length,\n    user_info: userInfo\n  }\n};"
+      },
+      "id": "prepare-prompt",
+      "name": "Prepare Analysis Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "claude-3-5-sonnet-20241022"
+            },
+            {
+              "name": "max_tokens",
+              "value": "2000"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{\"role\": \"user\", \"content\": $json.prompt}] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "anthropic-analysis",
+      "name": "Anthropic Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "anthropic-api-key",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const analysis = JSON.parse($json.content[0].text);\n\nreturn {\n  json: {\n    scan_id: items[0].json.scan_id,\n    user_id: items[0].json.user_id,\n    twitter_handle: items[0].json.twitter_handle,\n    timestamp: items[0].json.timestamp,\n    analysis: analysis,\n    tweet_count: items[0].json.tweet_count,\n    user_metrics: items[0].json.user_info.public_metrics\n  }\n};"
+      },
+      "id": "format-results",
+      "name": "Format Analysis Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO analysis_results (user_id, twitter_handle, scan_id, risk_score, political_bias, extremism_flags, associations, language_concerns, overall_assessment, recommendations, raw_analysis, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
+        "options": {}
+      },
+      "id": "save-db",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1780, 300],
+      "credentials": {
+        "postgres": {
+          "id": "repazoo-postgres",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond to Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Start Analysis": {
+      "main": [[{ "node": "Extract Request Data", "type": "main", "index": 0 }]]
+    },
+    "Extract Request Data": {
+      "main": [[{ "node": "Get Twitter User Info", "type": "main", "index": 0 }]]
+    },
+    "Get Twitter User Info": {
+      "main": [[{ "node": "Get User Tweets", "type": "main", "index": 0 }]]
+    },
+    "Get User Tweets": {
+      "main": [[{ "node": "Prepare Analysis Prompt", "type": "main", "index": 0 }]]
+    },
+    "Prepare Analysis Prompt": {
+      "main": [[{ "node": "Anthropic Analysis", "type": "main", "index": 0 }]]
+    },
+    "Anthropic Analysis": {
+      "main": [[{ "node": "Format Analysis Results", "type": "main", "index": 0 }]]
+    },
+    "Format Analysis Results": {
+      "main": [[{ "node": "Save to Database", "type": "main", "index": 0 }]]
+    },
+    "Save to Database": {
+      "main": [[{ "node": "Respond to Request", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-09T05:50:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,77 @@
+model_list:
+  # Local Ollama Models
+  - model_name: opus-orchestrator
+    litellm_params:
+      model: ollama/llama3.1:70b
+      api_base: http://ollama:11434
+
+  - model_name: sonnet-specialist-1
+    litellm_params:
+      model: ollama/mistral:7b
+      api_base: http://ollama:11434
+
+  - model_name: sonnet-specialist-2
+    litellm_params:
+      model: ollama/llama3:8b
+      api_base: http://ollama:11434
+
+  # HuggingFace Models via Ollama (will be added after download)
+  - model_name: twitter-sentiment
+    litellm_params:
+      model: ollama/twitter-roberta-sentiment
+      api_base: http://ollama:11434
+
+  - model_name: twitter-toxicity
+    litellm_params:
+      model: ollama/twitter-roberta-offensive
+      api_base: http://ollama:11434
+
+  - model_name: twitter-hate
+    litellm_params:
+      model: ollama/twitter-roberta-hate
+      api_base: http://ollama:11434
+
+  # Anthropic Fallback (if API key provided)
+  - model_name: claude-opus
+    litellm_params:
+      model: claude-opus-4-20250514
+      api_key: ${ANTHROPIC_API_KEY}
+
+  - model_name: claude-sonnet
+    litellm_params:
+      model: claude-sonnet-4-20250514
+      api_key: ${ANTHROPIC_API_KEY}
+
+litellm_settings:
+  # Enable caching for faster responses
+  cache: true
+  cache_params:
+    type: "redis"
+    host: "redis"
+    port: 6379
+
+  # Enable telemetry
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+
+  # Router settings
+  routing_strategy: "simple-shuffle"  # Load balance between models
+
+  # Rate limiting
+  rpm: 100  # Requests per minute
+  tpm: 100000  # Tokens per minute
+
+  # Fallback strategy
+  fallbacks:
+    - opus-orchestrator: ["claude-opus"]  # Fallback to Anthropic if local fails
+    - sonnet-specialist-1: ["claude-sonnet"]
+    - sonnet-specialist-2: ["claude-sonnet"]
+
+general_settings:
+  master_key: ${LITELLM_MASTER_KEY}
+
+  # Store model usage in memory (no DB needed)
+  store_model_in_db: false
+
+  # Enable prometheus metrics
+  prometheus_port: 4001

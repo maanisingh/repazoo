@@ -1,0 +1,470 @@
+version: '3.8'
+
+# Repazoo SaaS - Production Docker Compose
+# Multi-stage deployment: CFY (Confey) → NTF (Notify) → AI (Production)
+
+x-common-env: &common-env
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}
+  SUPABASE_DB_HOST: postgres
+  SUPABASE_DB_PORT: 5432
+  SUPABASE_DB_NAME: postgres
+  SUPABASE_DB_USER: postgres
+  REDIS_URL: redis://redis:6379
+  DEPLOYMENT_STAGE: ${DEPLOYMENT_STAGE:-cfy}
+
+services:
+  # PostgreSQL Database (Supabase-compatible)
+  postgres:
+    image: supabase/postgres:15.1.0.147
+    container_name: repazoo-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - repazoo-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: repazoo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - repazoo-network
+
+  # FastAPI Backend (Python)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: repazoo-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *common-env
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}@postgres:5432/postgres
+      SUPABASE_URL: ${SUPABASE_URL:-http://kong:8000}
+      SUPABASE_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      TWITTER_CLIENT_ID: ${TWITTER_CLIENT_ID}
+      TWITTER_CLIENT_SECRET: ${TWITTER_CLIENT_SECRET}
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      API_DOMAIN: ${API_DOMAIN:-api.repazoo.com}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+    volumes:
+      - ./backend:/app
+      - api_logs:/var/log/repazoo
+
+  # Node.js Backend API (TypeScript with BullMQ)
+  backend-api:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: repazoo-backend-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}@postgres:5432/repazoo
+      REDIS_URL: redis://redis:6379
+      TWITTER_CLIENT_ID: ${TWITTER_CLIENT_ID}
+      TWITTER_CLIENT_SECRET: ${TWITTER_CLIENT_SECRET}
+      TWITTER_CALLBACK_URL: ${TWITTER_CALLBACK_URL:-https://ntf.repazoo.com/api/twitter/oauth/callback}
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      FRONTEND_URL: ${FRONTEND_URL:-https://dash.repazoo.com}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3:8b
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # BullMQ Workers
+  workers:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: repazoo-workers
+    restart: unless-stopped
+    command: ["node", "dist/workers/index.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}@postgres:5432/repazoo
+      REDIS_URL: redis://redis:6379
+      TWITTER_CLIENT_ID: ${TWITTER_CLIENT_ID}
+      TWITTER_CLIENT_SECRET: ${TWITTER_CLIENT_SECRET}
+      TWITTER_CALLBACK_URL: ${TWITTER_CALLBACK_URL:-https://ntf.repazoo.com/api/twitter/oauth/callback}
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3:8b
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    networks:
+      - repazoo-network
+
+  # Supabase Kong (API Gateway)
+  kong:
+    image: kong:2.8.1
+    container_name: repazoo-kong
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+      - "8444:8443"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,rate-limiting
+    volumes:
+      - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - repazoo-network
+
+  # Prefect Server (Workflow Orchestration)
+  prefect-server:
+    image: prefecthq/prefect:2-python3.11
+    container_name: repazoo-prefect-server
+    restart: unless-stopped
+    ports:
+      - "4200:4200"
+    environment:
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}@postgres:5432/prefect
+      PREFECT_API_URL: http://prefect-server:4200/api
+    command: prefect server start --host 0.0.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+    volumes:
+      - prefect_data:/root/.prefect
+
+  # Prefect Agent (Workflow Executor)
+  prefect-agent:
+    image: prefecthq/prefect:2-python3.11
+    container_name: repazoo-prefect-agent
+    restart: unless-stopped
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}@postgres:5432/postgres
+      TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    command: prefect agent start -q repazoo-queue
+    depends_on:
+      - prefect-server
+    networks:
+      - repazoo-network
+    volumes:
+      - ./workflows:/app/workflows
+      - prefect_agent_data:/root/.prefect
+
+  # Shadcn Dashboard (React + Vite + Nginx)
+  dashboard:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: repazoo-dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - VITE_API_URL=https://cfy.repazoo.com
+      - VITE_WF_URL=https://wf.repazoo.com
+      - VITE_AI_URL=https://ai.repazoo.com
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # MongoDB (for Appsmith)
+  mongo:
+    image: mongo:6
+    container_name: repazoo-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: appsmith
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - repazoo-network
+
+  # Metabase (Analytics)
+  metabase:
+    image: metabase/metabase:latest
+    container_name: repazoo-metabase
+    restart: unless-stopped
+    ports:
+      - "3004:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: postgres
+      MB_DB_PASS: ${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}
+      MB_DB_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - metabase_data:/metabase-data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # Caddy (Reverse Proxy with Auto SSL)
+  caddy:
+    image: caddy:2-alpine
+    container_name: repazoo-caddy
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      DOMAIN_DASH: ${DOMAIN_DASH:-dash.repazoo.com}
+      DOMAIN_API: ${DOMAIN_API:-api.repazoo.com}
+      DOMAIN_WF: ${DOMAIN_WF:-wf.repazoo.com}
+      DOMAIN_AI: ${DOMAIN_AI:-ai.repazoo.com}
+      DOMAIN_NTF: ${DOMAIN_NTF:-ntf.repazoo.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./frontend/dist:/root/repazoo/frontend/dist:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - dashboard
+      - ollama
+      - litellm
+
+  # Uptime Kuma (Monitoring)
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: repazoo-uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3002:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # Flowise (LangChain Visual Builder)
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: repazoo-flowise
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_TYPE=postgres
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-repuzoo_secure_pass_2024}
+      - DATABASE_NAME=flowise
+      - FLOWISE_USERNAME=admin
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD:-repazoo_flowise_2024}
+      - APIKEY_PATH=/root/.flowise
+      - SECRETKEY_PATH=/root/.flowise
+      - LOG_LEVEL=info
+      - LOG_PATH=/root/.flowise/logs
+    volumes:
+      - flowise_data:/root/.flowise
+      - ./flowise/chatflows:/data/chatflows
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # Ollama (Local LLM Server)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: repazoo-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # LiteLLM (LLM Gateway/Proxy)
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: repazoo-litellm
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-1234}
+      - STORE_MODEL_IN_DB=False
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+      - litellm_data:/app/data
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+  # Open WebUI (Chat Interface for Ollama)
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: repazoo-open-webui
+    restart: unless-stopped
+    ports:
+      - "3003:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-repazoo_webui_secret_2024}
+      - WEBUI_AUTH=true
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - repazoo-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  mongo_data:
+    driver: local
+  appsmith_data:
+    driver: local
+  metabase_data:
+    driver: local
+  prefect_data:
+    driver: local
+  prefect_agent_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  uptime_kuma_data:
+    driver: local
+  api_logs:
+    driver: local
+  flowise_data:
+    driver: local
+  ollama_data:
+    driver: local
+  litellm_data:
+    driver: local
+  open_webui_data:
+    driver: local
+
+networks:
+  repazoo-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

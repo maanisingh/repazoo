@@ -1,0 +1,85 @@
+{
+  "name": "Save User Purpose",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "user/purpose",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-purpose",
+      "name": "Webhook: Save Purpose",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "user-purpose"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE users SET purpose = '{{ $json.purpose }}', purpose_category = '{{ $json.category }}', updated_at = NOW() WHERE id = {{ $json.user_id }} RETURNING id, email, purpose, purpose_category",
+        "options": {}
+      },
+      "id": "update-purpose",
+      "name": "Update User Purpose",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "l4mcv4XhAixvuZBL",
+          "name": "Repazoo PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: 'Purpose saved successfully', purpose: $json.purpose, category: $json.purpose_category } }}"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: Save Purpose": {
+      "main": [
+        [
+          {
+            "node": "Update User Purpose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update User Purpose": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

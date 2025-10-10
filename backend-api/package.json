@@ -1,0 +1,49 @@
+{
+  "name": "repazoo-backend-api",
+  "version": "1.0.0",
+  "description": "Repazoo TypeScript Backend API with BullMQ",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:workers": "tsx src/workers/index.ts",
+    "test": "vitest"
+  },
+  "keywords": [
+    "repazoo",
+    "twitter",
+    "reputation",
+    "bullmq"
+  ],
+  "author": "Repazoo",
+  "license": "PROPRIETARY",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "axios": "^1.11.0",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.32.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.14.0",
+    "twitter-api-v2": "^1.19.2",
+    "winston": "^3.11.0",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.8"
+  }
+}
