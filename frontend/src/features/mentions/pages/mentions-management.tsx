@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,6 +86,9 @@ export function MentionsManagement() {
   const [sentimentFilter, setSentimentFilter] = useState<string>('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedMention, setSelectedMention] = useState<Mention | null>(null);
+  const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<Recommendation | null>(null);
+  const [editedTweetText, setEditedTweetText] = useState('');
 
   // Fetch mentions with filters
   const { data: mentionsData, isLoading, refetch } = useQuery({
@@ -123,12 +127,12 @@ export function MentionsManagement() {
     },
     {
       id: '3',
-      type: 'remove',
+      type: 'positive',
       priority: 'medium',
-      title: 'Address Controversial Posts',
-      description: 'Consider deleting or clarifying posts that might be misinterpreted',
-      suggestedPost: 'N/A - Review and delete specific posts identified in the mentions table above',
-      reasoning: 'You have {X} posts flagged as high-risk. Removing or clarifying these can significantly improve your reputation.',
+      title: 'Share Educational Content',
+      description: 'Post about something you learned or insights from your field',
+      suggestedPost: 'Just learned about [interesting topic/concept]. Key takeaway: [your insight]. This could be really valuable for [audience]. What has been your experience with this?',
+      reasoning: 'Sharing educational content positions you as knowledgeable and thoughtful, improving your professional reputation.',
     },
     {
       id: '4',
@@ -163,7 +167,43 @@ export function MentionsManagement() {
     },
   });
 
+  // Post tweet mutation
+  const postTweetMutation = useMutation({
+    mutationFn: async (tweetText: string) => {
+      const response = await fetch('/api/twitter/post-tweet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, tweet_text: tweetText }),
+      });
+      if (!response.ok) throw new Error('Failed to post tweet');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('Tweet posted successfully!');
+      setPostDialogOpen(false);
+      setSelectedRecommendation(null);
+      setEditedTweetText('');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to post tweet');
+    },
+  });
+
   const mentions: Mention[] = mentionsData?.mentions || [];
+
+  const handleOpenPostDialog = (recommendation: Recommendation) => {
+    setSelectedRecommendation(recommendation);
+    setEditedTweetText(recommendation.suggestedPost);
+    setPostDialogOpen(true);
+  };
+
+  const handlePostTweet = () => {
+    if (!editedTweetText.trim()) {
+      toast.error('Tweet text cannot be empty');
+      return;
+    }
+    postTweetMutation.mutate(editedTweetText);
+  };
 
   const getRiskBadge = (riskLevel: string) => {
     switch (riskLevel?.toLowerCase()) {
@@ -261,7 +301,11 @@ export function MentionsManagement() {
                       <p className='text-xs text-muted-foreground'>
                         <strong>Why:</strong> {rec.reasoning}
                       </p>
-                      <Button size='sm' className='w-full'>
+                      <Button
+                        size='sm'
+                        className='w-full'
+                        onClick={() => handleOpenPostDialog(rec)}
+                      >
                         <ExternalLink className='h-3 w-3 mr-2' />
                         Post on Twitter
                       </Button>
@@ -409,6 +453,53 @@ export function MentionsManagement() {
           </Card>
         </div>
       </Main>
+
+      {/* Post Tweet Dialog */}
+      <AlertDialog open={postDialogOpen} onOpenChange={setPostDialogOpen}>
+        <AlertDialogContent className='max-w-2xl'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Edit and Post Tweet</AlertDialogTitle>
+            <AlertDialogDescription>
+              Review and edit the suggested tweet before posting to Twitter.
+              {selectedRecommendation && (
+                <div className='mt-2'>
+                  <strong>{selectedRecommendation.title}</strong>
+                  <p className='text-xs mt-1'>{selectedRecommendation.reasoning}</p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className='py-4'>
+            <Textarea
+              value={editedTweetText}
+              onChange={(e) => setEditedTweetText(e.target.value)}
+              rows={6}
+              className='w-full'
+              placeholder='Write your tweet...'
+            />
+            <div className='mt-2 text-sm text-muted-foreground text-right'>
+              {editedTweetText.length} / 280 characters
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePostTweet}
+              disabled={postTweetMutation.isPending || editedTweetText.length > 280}
+              className='bg-blue-500 hover:bg-blue-600'
+            >
+              {postTweetMutation.isPending ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+                  Posting...
+                </>
+              ) : (
+                'Post Tweet'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
