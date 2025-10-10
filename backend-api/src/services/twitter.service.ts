@@ -22,14 +22,14 @@ export class TwitterService {
       state,
     });
 
-    // Store state and code_verifier temporarily (5 minutes expiry)
+    // Store state, code_verifier, AND callback_url temporarily (5 minutes expiry)
     // Delete any existing tokens for this user first
     await query('DELETE FROM oauth_temp_tokens WHERE user_id = $1', [user_id]);
 
     await query(
-      `INSERT INTO oauth_temp_tokens (user_id, state, code_verifier, expires_at)
-       VALUES ($1, $2, $3, NOW() + INTERVAL '5 minutes')`,
-      [user_id, state, codeVerifier]
+      `INSERT INTO oauth_temp_tokens (user_id, state, code_verifier, callback_url, expires_at)
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '5 minutes')`,
+      [user_id, state, codeVerifier, callback_url]
     );
 
     return {
@@ -49,9 +49,9 @@ export class TwitterService {
       // Extract user_id from state
       const user_id = state.split('_')[0];
 
-      // Retrieve code_verifier from database
-      const tempTokenResult = await query<{ code_verifier: string }>(
-        'SELECT code_verifier FROM oauth_temp_tokens WHERE user_id = $1 AND state = $2 AND expires_at > NOW()',
+      // Retrieve code_verifier AND callback_url from database
+      const tempTokenResult = await query<{ code_verifier: string; callback_url: string }>(
+        'SELECT code_verifier, callback_url FROM oauth_temp_tokens WHERE user_id = $1 AND state = $2 AND expires_at > NOW()',
         [user_id, state]
       );
 
@@ -62,7 +62,7 @@ export class TwitterService {
         };
       }
 
-      const { code_verifier } = tempTokenResult.rows[0];
+      const { code_verifier, callback_url } = tempTokenResult.rows[0];
 
       // Exchange code for access token
       const client = new TwitterApi({
@@ -73,7 +73,7 @@ export class TwitterService {
       const { accessToken, refreshToken, expiresIn } = await client.loginWithOAuth2({
         code,
         codeVerifier: code_verifier,
-        redirectUri: config.TWITTER_CALLBACK_URL,
+        redirectUri: callback_url, // Use the same callback_url from generateAuthUrl
       });
 
       // Get Twitter user info

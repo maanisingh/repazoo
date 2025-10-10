@@ -1,6 +1,6 @@
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
-import { n8nClient } from '@/lib/api/n8n-client'
+import { n8nClient } from '@/lib/api/repazoo-client'
 import { Loader2 } from 'lucide-react'
 
 export function Overview() {

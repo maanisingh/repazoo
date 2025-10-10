@@ -58,7 +58,7 @@ export function SignUpForm({
 
     try {
       // Import n8n client
-      const { n8nClient } = await import('@/lib/api/n8n-client')
+      const { n8nClient } = await import('@/lib/api/repazoo-client')
 
       // Call register API
       const response = await n8nClient.register({

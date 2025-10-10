@@ -37,7 +37,7 @@ import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
-import { n8nClient } from '@/lib/api/n8n-client'
+import { n8nClient } from '@/lib/api/repazoo-client'
 
 const newScanSchema = z.object({
   purpose: z.string().min(1, 'Purpose is required'),

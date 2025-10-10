@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { showSubmittedData } from '@/lib/show-submitted-data'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
-import { n8nClient } from '@/lib/api/n8n-client'
+import { n8nClient } from '@/lib/api/repazoo-client'
 import { Button } from '@/components/ui/button'
 import {
   Form,

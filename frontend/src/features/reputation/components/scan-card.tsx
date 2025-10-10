@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { type Scan } from '@/lib/api/n8n-client'
+import { type Scan } from '@/lib/api/repazoo-client'
 import { RiskGauge } from './risk-gauge'
 import { ScanProgress } from '@/components/ui/scan-progress'
 

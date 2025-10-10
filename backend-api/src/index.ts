@@ -7,6 +7,7 @@ import twitterRoutes from './routes/twitter.routes.js';
 import scanRoutes from './routes/scan.routes.js';
 import mentionsRoutes from './routes/mentions.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import helpRoutes from './routes/help.routes.js';
 
 // Import workers - they will start automatically when imported
 import './workers/scan.worker.js';
@@ -45,6 +46,7 @@ app.use('/api/twitter', twitterRoutes);
 app.use('/api/scans', scanRoutes);
 app.use('/api/mentions', mentionsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/help', helpRoutes);
 
 // No backward compatibility routes needed - n8n removed
 

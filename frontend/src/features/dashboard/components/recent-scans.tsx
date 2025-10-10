@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Loader2 } from 'lucide-react'
-import { n8nClient } from '@/lib/api/n8n-client'
+import { n8nClient } from '@/lib/api/repazoo-client'
 import { ScanProgress } from '@/components/ui/scan-progress'
 
 function getRiskColor(riskLevel: string) {

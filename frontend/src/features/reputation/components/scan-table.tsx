@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination, DataTableToolbar } from '@/components/data-table'
-import { type Scan } from '@/lib/api/n8n-client'
+import { type Scan } from '@/lib/api/repazoo-client'
 import { scanColumns } from './scan-columns'
 
 type ScanTableProps = {

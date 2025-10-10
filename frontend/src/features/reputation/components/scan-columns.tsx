@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DataTableColumnHeader } from '@/components/data-table'
-import { type Scan } from '@/lib/api/n8n-client'
+import { type Scan } from '@/lib/api/repazoo-client'
 import { RiskGauge } from './risk-gauge'
 
 const getRiskBadgeVariant = (riskLevel: string) => {

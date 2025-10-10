@@ -1,35 +1,69 @@
 /**
  * Repazoo API Client
- * Unified client for backend FastAPI endpoints
- * Replaces n8n webhook-based architecture
+ *
+ * BullMQ Backend API Client
+ * All requests go to the code-first BullMQ backend at /api/*
+ *
+ * Migration to code-first BullMQ backend completed Oct 2025.
+ *
+ * Cache-busting update: 2025-10-10 - Force new bundle generation
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://cfy.repazoo.com/api';
+// Using BullMQ backend API directly (cfy environment)
+// Migration to code-first BullMQ backend completed Oct 2025
+const API_BASE = 'https://cfy.repazoo.com/api';
 
-export interface ApiError {
-  detail: string;
-  status: number;
-}
-
-export interface User {
-  id: string;
-  email: string;
-  full_name?: string;
-  twitter_username?: string;
-  subscription_tier?: 'free' | 'basic' | 'pro' | 'enterprise';
-  created_at: string;
-}
+// API Client Version - increment to force cache invalidation
+export const API_CLIENT_VERSION = '1.0.1';
 
 export interface Scan {
-  id: string;
+  id: number;
+  scan_id: string;
   user_id: string;
   twitter_handle: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  risk_score?: number;
-  risk_level?: 'low' | 'medium' | 'high' | 'critical';
-  analysis_result?: any;
+  status: string;
   created_at: string;
-  completed_at?: string;
+  completed_at: string | null;
+  overall_score?: number;
+  risk_level?: string;
+  summary?: {
+    overall_score: number;
+    risk_level: string;
+    toxicity_score: number;
+  };
+  analysis_result?: {
+    overall_score: number;
+    risk_level: string;
+    sentiment: {
+      positive: number;
+      neutral: number;
+      negative: number;
+    };
+    toxicity_score: number;
+    hate_speech_detected: boolean;
+    key_findings: string[];
+    recommendations: string[];
+    tweets_analyzed?: number;
+    tweets_list?: Array<{
+      text: string;
+      created_at: string;
+      public_metrics?: {
+        likes: number;
+        retweets: number;
+        replies: number;
+        views: number;
+      };
+    }>;
+  };
+  cache_info?: {
+    used_cached_tweets?: boolean;
+    used_cached_analysis?: boolean;
+    new_tweets_analyzed?: number;
+    new_tweets_fetched?: number;
+    total_tweets_cached?: number;
+    last_sync?: string | null;
+  } | null;
+  error_message?: string | null;
 }
 
 export interface DashboardStats {
@@ -39,216 +73,304 @@ export interface DashboardStats {
   high_risk_accounts: number;
 }
 
-export interface AnalyzeRequest {
-  twitter_username: string;
-  analysis_type?: 'reputation' | 'content' | 'engagement';
-  include_tweets?: boolean;
+export interface CreateScanRequest {
+  twitter_handle?: string;
+  user_id: string;
+  scan_id: string;
+  purpose?: string;
+  custom_context?: string;
 }
 
-export interface UsageQuota {
-  tier: string;
-  api_calls_used: number;
-  api_calls_limit: number;
-  scans_used: number;
-  scans_limit: number;
-  reset_date: string;
+export interface CreateScanResponse {
+  status: string;
+  scan_id: string;
+  result?: any;
+  error?: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  token?: string;
+  user_id?: string;
+  message?: string;
+}
+
+export interface TwitterOAuthRequest {
+  user_id: string;
+  callback_url: string;
+}
+
+export interface TwitterOAuthResponse {
+  success: boolean;
+  auth_url?: string;
+  error?: string;
+}
+
+export interface PostTweetRequest {
+  user_id: string;
+  tweet_text: string;
+}
+
+export interface DeleteTweetRequest {
+  user_id: string;
+  tweet_id: string;
+}
+
+export interface SavePurposeRequest {
+  user_id: string;
+  purpose: string;
+  purpose_category: string;
 }
 
 class RepazooClient {
   private baseURL: string;
+  public readonly version = API_CLIENT_VERSION;
 
-  constructor(baseURL?: string) {
-    this.baseURL = baseURL || API_BASE_URL;
+  constructor(baseURL: string = API_BASE) {
+    this.baseURL = baseURL;
   }
 
+  /**
+   * Get JWT token from localStorage
+   */
   private getToken(): string | null {
-    return localStorage.getItem('repazoo_token');
+    return localStorage.getItem('repazoo_auth_token');
   }
 
-  private async request<T>(
-    endpoint: string,
-    options?: RequestInit
-  ): Promise<T> {
+  /**
+   * Get authentication headers
+   */
+  private getAuthHeaders(): HeadersInit {
     const token = this.getToken();
-    const headers: Record<string, string> = {
+    const headers: HeadersInit = {
       'Content-Type': 'application/json',
-      ...(options?.headers as Record<string, string>),
     };
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const url = `${this.baseURL}${endpoint}`;
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({
-          detail: response.statusText,
-        }));
-        throw {
-          detail: error.detail || error.message || 'API request failed',
-          status: response.status,
-        } as ApiError;
-      }
-
-      return response.json();
-    } catch (error) {
-      if ((error as ApiError).status) {
-        throw error;
-      }
-      throw {
-        detail: 'Network error or server unavailable',
-        status: 0,
-      } as ApiError;
-    }
+    return headers;
   }
 
-  // ===== Authentication =====
+  // ========== Authentication APIs ==========
 
-  async login(email: string, password: string): Promise<{ access_token: string; user: User }> {
-    return this.request('/auth/login', {
+  /**
+   * Register a new user
+   */
+  async register(data: RegisterRequest): Promise<{ success: boolean; user_id?: string; message?: string }> {
+    const response = await fetch(`${this.baseURL}/auth/register`, {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-  }
-
-  async register(data: { email: string; password: string; full_name?: string }): Promise<User> {
-    return this.request('/auth/register', {
-      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+    if (!response.ok) throw new Error(`Registration failed: ${response.statusText}`);
+    return response.json();
   }
 
-  async getCurrentUser(): Promise<User> {
-    return this.request('/users/me');
-  }
-
-  async updateProfile(updates: Partial<User>): Promise<User> {
-    return this.request('/users/me', {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-  }
-
-  // ===== Scans =====
-
-  async getScans(limit = 50, offset = 0): Promise<Scan[]> {
-    return this.request(`/scans?limit=${limit}&offset=${offset}`);
-  }
-
-  async getScan(id: string): Promise<Scan> {
-    return this.request(`/scans/${id}`);
-  }
-
-  async createScan(data: { twitter_handle: string }): Promise<Scan> {
-    return this.request('/scans', {
+  /**
+   * Login user and get JWT token
+   */
+  async login(data: LoginRequest): Promise<LoginResponse> {
+    const response = await fetch(`${this.baseURL}/auth/login`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(`Login failed: ${response.statusText}`);
+    return response.json();
+  }
+
+  /**
+   * Request password reset
+   */
+  async passwordReset(email: string): Promise<{ success: boolean; message?: string }> {
+    const response = await fetch(`${this.baseURL}/auth/password-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!response.ok) throw new Error(`Password reset failed: ${response.statusText}`);
+    return response.json();
+  }
+
+  // ========== Reputation Scan APIs ==========
+
+  /**
+   * Get all scans from database
+   */
+  async getAllScans(): Promise<{ success: boolean; total: number; scans: Scan[] }> {
+    const response = await fetch(`${this.baseURL}/scans`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch scans: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get a specific scan by ID
+   */
+  async getScanById(scanId: string): Promise<{ success: boolean; scan: Scan; error?: string }> {
+    const response = await fetch(`${this.baseURL}/scans/${scanId}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch scan: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get dashboard statistics
+   */
+  async getDashboardStats(): Promise<{ success: boolean; stats: DashboardStats }> {
+    const response = await fetch(`${this.baseURL}/scans/stats/dashboard`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch stats: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Create a new Twitter reputation scan (self-service)
+   */
+  async createScan(data: CreateScanRequest): Promise<CreateScanResponse> {
+    const response = await fetch(`${this.baseURL}/scans/create`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
-        twitter_username: data.twitter_handle,
-        analysis_type: 'reputation',
-        include_tweets: true,
+        scan_id: data.scan_id,
+        purpose: data.purpose || 'general',
+        custom_context: data.custom_context || '',
       }),
     });
-  }
 
-  // ===== Dashboard =====
-
-  async getDashboardStats(): Promise<DashboardStats> {
-    return this.request('/dashboard/stats');
-  }
-
-  // ===== Analysis =====
-
-  async createAnalysis(data: AnalyzeRequest): Promise<any> {
-    return this.request('/analyze', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getAnalyses(limit = 50, offset = 0): Promise<any[]> {
-    return this.request(`/analyses?limit=${limit}&offset=${offset}`);
-  }
-
-  async getAnalysis(id: string): Promise<any> {
-    return this.request(`/analyses/${id}`);
-  }
-
-  // ===== Usage =====
-
-  async getUsageQuota(): Promise<UsageQuota> {
-    return this.request('/usage/quota');
-  }
-
-  // ===== Subscriptions =====
-
-  async getSubscriptionStatus(userId: string): Promise<any> {
-    return this.request(`/subscriptions/status?user_id=${userId}`);
-  }
-
-  async createSubscription(data: {
-    user_id: string;
-    tier: string;
-    payment_method_id: string;
-  }): Promise<any> {
-    return this.request('/subscriptions', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // ===== Twitter OAuth =====
-
-  async initiateTwitterOAuth(domain: string = 'dash'): Promise<{ authorization_url: string }> {
-    return this.request(`/auth/twitter/login?domain=${domain}`);
-  }
-
-  async getTwitterStatus(userId: string): Promise<{ connected: boolean; username?: string }> {
-    return this.request(`/auth/twitter/status?user_id=${userId}`);
-  }
-
-  // ===== Health Check =====
-
-  async healthCheck(): Promise<{ status: string }> {
-    return this.request('/healthz');
-  }
-
-  // ===== Mentions =====
-
-  async getMentions(userId: string, filters?: any): Promise<any> {
-    const params = new URLSearchParams();
-    if (filters) {
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== undefined && filters[key] !== null) {
-          params.append(key, String(filters[key]));
-        }
-      });
+    if (!response.ok) {
+      throw new Error(`Failed to create scan: ${response.statusText}`);
     }
-    return this.request(`/mentions?user_id=${userId}&${params.toString()}`);
+
+    return response.json();
   }
 
-  async getMention(userId: string, mentionId: string): Promise<any> {
-    return this.request(`/mentions/${mentionId}?user_id=${userId}`);
-  }
+  // ========== Twitter OAuth APIs ==========
 
-  async getMentionsStats(userId: string): Promise<any> {
-    return this.request(`/mentions/stats/summary?user_id=${userId}`);
-  }
-
-  async scanMentions(userId: string, data?: any): Promise<any> {
-    return this.request(`/mentions/scan`, {
+  /**
+   * Initiate Twitter OAuth connection
+   */
+  async connectTwitter(data: TwitterOAuthRequest): Promise<TwitterOAuthResponse> {
+    const response = await fetch(`${this.baseURL}/twitter/oauth/connect`, {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId, ...data }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
     });
+    if (!response.ok) throw new Error(`Twitter OAuth failed: ${response.statusText}`);
+    return response.json();
+  }
+
+  /**
+   * Disconnect Twitter account
+   */
+  async disconnectTwitter(userId: string): Promise<{ success: boolean; message?: string }> {
+    const response = await fetch(`${this.baseURL}/twitter/disconnect/${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) throw new Error(`Failed to disconnect Twitter: ${response.statusText}`);
+    return response.json();
+  }
+
+  /**
+   * Get user's own tweets
+   */
+  async getMyPosts(userId: string): Promise<{ success: boolean; tweets?: any[]; error?: string }> {
+    const response = await fetch(`${this.baseURL}/twitter/my-posts/${userId}`);
+    if (!response.ok) throw new Error(`Failed to fetch tweets: ${response.statusText}`);
+    return response.json();
+  }
+
+  // ========== Twitter Management APIs ==========
+
+  /**
+   * Post a new tweet
+   */
+  async postTweet(data: PostTweetRequest): Promise<{ success: boolean; tweet_id?: string; error?: string }> {
+    const response = await fetch(`${this.baseURL}/twitter/post-tweet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(`Failed to post tweet: ${response.statusText}`);
+    return response.json();
+  }
+
+  /**
+   * Delete a tweet
+   */
+  async deleteTweet(data: DeleteTweetRequest): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(`${this.baseURL}/twitter/delete-tweet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(`Failed to delete tweet: ${response.statusText}`);
+    return response.json();
+  }
+
+  // ========== User Management APIs ==========
+
+  /**
+   * Get user's Twitter connection status
+   */
+  async getUserTwitterStatus(userId: string): Promise<{ success: boolean; connected: boolean; twitter_handle?: string; twitter_user_id?: string }> {
+    const response = await fetch(`${this.baseURL}/twitter/status/${userId}`);
+    if (!response.ok) throw new Error(`Failed to get user status: ${response.statusText}`);
+    return response.json();
+  }
+
+  /**
+   * Save user's purpose
+   */
+  async savePurpose(data: SavePurposeRequest): Promise<{ success: boolean; message?: string }> {
+    const response = await fetch(`${this.baseURL}/user/purpose`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(`Failed to save purpose: ${response.statusText}`);
+    return response.json();
+  }
+
+  // ========== Utility Functions ==========
+
+  /**
+   * Generate a unique scan ID
+   * Cache-bust: 2025-10-10
+   */
+  generateScanId(): string {
+    return `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 }
 
 // Export singleton instance
 export const repazooClient = new RepazooClient();
-export default repazooClient;
+
+// Backward compatibility alias
+export const n8nClient = repazooClient;
+
+// Export types
+export type { RepazooClient };

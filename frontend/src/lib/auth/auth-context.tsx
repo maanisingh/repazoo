@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const { n8nClient } = await import('../api/n8n-client');
+    const { n8nClient } = await import('../api/repazoo-client');
     const response = await n8nClient.login({ email, password });
 
     if (response.success && response.token && response.user_id) {
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (email: string, password: string, fullName: string) => {
-    const { n8nClient } = await import('../api/n8n-client');
+    const { n8nClient } = await import('../api/repazoo-client');
     const response = await n8nClient.register({ email, password, full_name: fullName });
 
     if (response.success && response.user_id) {
