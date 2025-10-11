@@ -11,6 +11,7 @@ export const twitterOAuthWorker = new Worker<TwitterOAuthJobData>(
     const { user_id, oauth_token, oauth_verifier, callback_url } = job.data;
 
     console.log(`Processing Twitter OAuth job for user: ${user_id}`);
+    console.log(`Job data:`, JSON.stringify(job.data, null, 2));
 
     try {
       // If we have oauth_token and oauth_verifier, complete the OAuth flow

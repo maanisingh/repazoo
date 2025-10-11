@@ -34,9 +34,9 @@ export class AuthService {
 
       const user_id = authResult.rows[0].id;
 
-      // Create user in public.users
+      // Create user in public.users (id is FK to auth.users.id)
       await query(
-        `INSERT INTO public.users (auth_id, email, display_name, created_at, updated_at)
+        `INSERT INTO public.users (id, email, display_name, created_at, updated_at)
          VALUES ($1, $2, $3, NOW(), NOW())`,
         [user_id, email, full_name]
       );
@@ -58,11 +58,11 @@ export class AuthService {
 
   async loginUser(email: string, password: string): Promise<{ success: boolean; token?: string; user_id?: string; message?: string }> {
     try {
-      // Get user with password hash and admin status
+      // Get user with password hash and admin status (u.id is FK to auth.users.id)
       const result = await query<User & { password_hash: string; is_admin: boolean }>(
-        `SELECT u.id, u.email, u.display_name as full_name, u.is_admin, au.password_hash
+        `SELECT u.id, u.email, u.display_name as full_name, u.is_admin, u.subscription_tier, au.password_hash
          FROM public.users u
-         JOIN auth.users au ON au.id = u.auth_id
+         JOIN auth.users au ON au.id = u.id
          WHERE u.email = $1`,
         [email]
       );

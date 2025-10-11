@@ -7,7 +7,12 @@ export class TwitterService {
   /**
    * Generate OAuth 2.0 authorization URL
    */
-  async generateAuthUrl(user_id: string, callback_url: string): Promise<{ auth_url: string; state: string }> {
+  async generateAuthUrl(user_id: string, callback_url?: string): Promise<{ auth_url: string; state: string }> {
+    // HARDCODED FIX: Always use the cfy callback URL
+    const finalCallbackUrl = 'https://cfy.repazoo.com/api/twitter/oauth/callback';
+
+    console.log(`[generateAuthUrl] HARDCODED FIX - Received user_id: ${user_id}, callback_url param: ${callback_url}, config value: ${config.TWITTER_CALLBACK_URL}, USING HARDCODED: ${finalCallbackUrl}`);
+
     const client = new TwitterApi({
       clientId: config.TWITTER_CLIENT_ID,
       clientSecret: config.TWITTER_CLIENT_SECRET,
@@ -17,10 +22,12 @@ export class TwitterService {
     const state = `${user_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // Generate OAuth 2.0 authorization URL
-    const { url, codeVerifier } = client.generateOAuth2AuthLink(callback_url, {
+    const { url, codeVerifier } = client.generateOAuth2AuthLink(finalCallbackUrl, {
       scope: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
       state,
     });
+
+    console.log(`[generateAuthUrl] About to insert - user_id: ${user_id}, state: ${state}, codeVerifier: ${codeVerifier}, callback_url: ${finalCallbackUrl}`);
 
     // Store state, code_verifier, AND callback_url temporarily (5 minutes expiry)
     // Delete any existing tokens for this user first
@@ -29,8 +36,10 @@ export class TwitterService {
     await query(
       `INSERT INTO oauth_temp_tokens (user_id, state, code_verifier, callback_url, expires_at)
        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '5 minutes')`,
-      [user_id, state, codeVerifier, callback_url]
+      [user_id, state, codeVerifier, finalCallbackUrl]
     );
+
+    console.log(`[generateAuthUrl] Successfully inserted OAuth temp token`);
 
     return {
       auth_url: url,
@@ -64,6 +73,13 @@ export class TwitterService {
 
       const { code_verifier, callback_url } = tempTokenResult.rows[0];
 
+      // SAFEGUARD: Use hardcoded URL if callback_url is NULL/empty (should never happen after fix, but adding for safety)
+      const finalCallbackUrl = callback_url && callback_url.trim() !== ''
+        ? callback_url
+        : 'https://cfy.repazoo.com/api/twitter/oauth/callback';
+
+      console.log(`[handleOAuthCallback] Using callback_url: ${finalCallbackUrl} (from DB: ${callback_url})`);
+
       // Exchange code for access token
       const client = new TwitterApi({
         clientId: config.TWITTER_CLIENT_ID,
@@ -73,7 +89,7 @@ export class TwitterService {
       const { accessToken, refreshToken, expiresIn } = await client.loginWithOAuth2({
         code,
         codeVerifier: code_verifier,
-        redirectUri: callback_url, // Use the same callback_url from generateAuthUrl
+        redirectUri: finalCallbackUrl, // Use the same callback_url from generateAuthUrl
       });
 
       // Get Twitter user info

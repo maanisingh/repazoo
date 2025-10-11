@@ -208,7 +208,7 @@ Output ONLY valid JSON (no markdown, no explanations) in this exact format:
       throw new Error(`Ollama API error: ${ollamaResponse.statusText}`);
     }
 
-    const data = await ollamaResponse.json();
+    const data = await ollamaResponse.json() as { response: string };
     let responseText = data.response.trim();
 
     // Clean up response
