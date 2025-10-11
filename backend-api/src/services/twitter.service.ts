@@ -30,8 +30,8 @@ export class TwitterService {
     console.log(`[generateAuthUrl] About to insert - user_id: ${user_id}, state: ${state}, codeVerifier: ${codeVerifier}, callback_url: ${finalCallbackUrl}`);
 
     // Store state, code_verifier, AND callback_url temporarily (5 minutes expiry)
-    // Delete any existing tokens for this user first
-    await query('DELETE FROM oauth_temp_tokens WHERE user_id = $1', [user_id]);
+    // CRITICAL FIX: Delete any existing tokens for this user AND expired tokens for all users
+    await query('DELETE FROM oauth_temp_tokens WHERE user_id = $1 OR expires_at < NOW()', [user_id]);
 
     await query(
       `INSERT INTO oauth_temp_tokens (user_id, state, code_verifier, callback_url, expires_at)
@@ -168,8 +168,13 @@ export class TwitterService {
 
   /**
    * Disconnect Twitter account by setting is_active to false
+   * CRITICAL FIX: Also clean up OAuth temp tokens to prevent reconnection issues
    */
   async disconnectTwitter(user_id: string): Promise<void> {
+    // Clean up any pending OAuth temp tokens
+    await query('DELETE FROM oauth_temp_tokens WHERE user_id = $1', [user_id]);
+
+    // Set twitter credentials as inactive
     await query(
       'UPDATE twitter_credentials SET is_active = false, updated_at = NOW() WHERE user_id = $1',
       [user_id]

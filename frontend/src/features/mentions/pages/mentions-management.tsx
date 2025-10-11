@@ -1,14 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle,
   Trash2,
   ExternalLink,
   Filter,
   Loader2,
   RefreshCw,
-  TrendingUp,
-  Lightbulb,
   CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,7 +28,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,16 +63,6 @@ interface Mention {
   topics: any;
 }
 
-interface Recommendation {
-  id: string;
-  type: string;
-  priority: 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  suggestedPost: string;
-  reasoning: string;
-}
-
 export function MentionsManagement() {
   const { auth } = useAuthStore();
   const userId = auth.user?.accountNo || '';
@@ -86,9 +72,6 @@ export function MentionsManagement() {
   const [sentimentFilter, setSentimentFilter] = useState<string>('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedMention, setSelectedMention] = useState<Mention | null>(null);
-  const [postDialogOpen, setPostDialogOpen] = useState(false);
-  const [selectedRecommendation, setSelectedRecommendation] = useState<Recommendation | null>(null);
-  const [editedTweetText, setEditedTweetText] = useState('');
 
   // Fetch mentions with filters
   const { data: mentionsData, isLoading, refetch } = useQuery({
@@ -105,57 +88,6 @@ export function MentionsManagement() {
     enabled: !!userId,
   });
 
-  // Fetch AI-generated personalized recommendations
-  const { data: recommendationsData, isLoading: isLoadingRecommendations } = useQuery({
-    queryKey: ['recommendations', userId],
-    queryFn: async () => {
-      const response = await fetch(`/api/mentions/recommendations?user_id=${userId}`);
-      if (!response.ok) throw new Error('Failed to fetch recommendations');
-      return response.json();
-    },
-    enabled: !!userId,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  // Use AI recommendations or fallback to defaults
-  const recommendations: Recommendation[] = recommendationsData?.recommendations || [
-    {
-      id: '1',
-      type: 'positive',
-      priority: 'high',
-      title: 'Share Professional Achievement',
-      description: 'Post about recent professional accomplishments to improve your reputation score',
-      suggestedPost: 'Excited to share that I successfully completed [your achievement]. Grateful for the learning experience and looking forward to applying these skills! #ProfessionalGrowth #Learning',
-      reasoning: 'Your profile lacks recent positive professional content. Sharing achievements demonstrates growth and competence.',
-    },
-    {
-      id: '2',
-      type: 'engagement',
-      priority: 'high',
-      title: 'Engage with Industry Leaders',
-      description: 'Reply thoughtfully to posts in your industry to build positive associations',
-      suggestedPost: 'Great insights! I especially appreciate the point about [specific topic]. In my experience, [add your perspective]. Thanks for sharing!',
-      reasoning: 'Engaging with respected voices in your field creates positive associations and demonstrates professional engagement.',
-    },
-    {
-      id: '3',
-      type: 'positive',
-      priority: 'medium',
-      title: 'Share Educational Content',
-      description: 'Post about something you learned or insights from your field',
-      suggestedPost: 'Just learned about [interesting topic/concept]. Key takeaway: [your insight]. This could be really valuable for [audience]. What has been your experience with this?',
-      reasoning: 'Sharing educational content positions you as knowledgeable and thoughtful, improving your professional reputation.',
-    },
-    {
-      id: '4',
-      type: 'positive',
-      priority: 'medium',
-      title: 'Share Community Involvement',
-      description: 'Post about volunteer work or community engagement',
-      suggestedPost: 'Volunteered with [organization] this weekend. It\'s incredibly rewarding to give back to the community and make a positive impact. #CommunityService #GivingBack',
-      reasoning: 'Community involvement demonstrates character and social responsibility, which are valued in visa and employment screenings.',
-    },
-  ];
 
   // Delete tweet mutation
   const deleteTweetMutation = useMutation({
@@ -179,43 +111,7 @@ export function MentionsManagement() {
     },
   });
 
-  // Post tweet mutation
-  const postTweetMutation = useMutation({
-    mutationFn: async (tweetText: string) => {
-      const response = await fetch('/api/twitter/post-tweet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, tweet_text: tweetText }),
-      });
-      if (!response.ok) throw new Error('Failed to post tweet');
-      return response.json();
-    },
-    onSuccess: () => {
-      toast.success('Tweet posted successfully!');
-      setPostDialogOpen(false);
-      setSelectedRecommendation(null);
-      setEditedTweetText('');
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to post tweet');
-    },
-  });
-
   const mentions: Mention[] = mentionsData?.mentions || [];
-
-  const handleOpenPostDialog = (recommendation: Recommendation) => {
-    setSelectedRecommendation(recommendation);
-    setEditedTweetText(recommendation.suggestedPost);
-    setPostDialogOpen(true);
-  };
-
-  const handlePostTweet = () => {
-    if (!editedTweetText.trim()) {
-      toast.error('Tweet text cannot be empty');
-      return;
-    }
-    postTweetMutation.mutate(editedTweetText);
-  };
 
   const getRiskBadge = (riskLevel: string) => {
     switch (riskLevel?.toLowerCase()) {
@@ -240,16 +136,6 @@ export function MentionsManagement() {
     }
   };
 
-  const getPriorityIcon = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return <AlertTriangle className='h-4 w-4 text-red-500' />;
-      case 'medium':
-        return <TrendingUp className='h-4 w-4 text-orange-500' />;
-      default:
-        return <Lightbulb className='h-4 w-4 text-blue-500' />;
-    }
-  };
 
   return (
     <>
@@ -268,72 +154,10 @@ export function MentionsManagement() {
           <div>
             <h1 className='text-3xl font-bold tracking-tight'>Mentions Management</h1>
             <p className='text-muted-foreground mt-1'>
-              Manage your Twitter mentions and get recommendations to improve your reputation
+              Monitor and manage your Twitter mentions to protect your reputation
             </p>
           </div>
 
-          {/* Recommendations Section */}
-          <Card className='border-2 border-blue-200 dark:border-blue-900'>
-            <CardHeader>
-              <div className='flex items-center gap-2'>
-                <Lightbulb className='h-5 w-5 text-blue-500' />
-                <CardTitle>Recommended Actions</CardTitle>
-              </div>
-              <CardDescription>
-                AI-powered personalized suggestions to improve your Twitter reputation based on your scan purpose
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingRecommendations ? (
-                <div className='flex items-center justify-center py-8'>
-                  <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
-                  <span className='ml-3 text-muted-foreground'>Generating personalized recommendations...</span>
-                </div>
-              ) : (
-                <div className='grid gap-4 md:grid-cols-2'>
-                {recommendations.map((rec) => (
-                  <Card key={rec.id} className='border-l-4' style={{
-                    borderLeftColor: rec.priority === 'high' ? '#ef4444' : rec.priority === 'medium' ? '#f97316' : '#3b82f6'
-                  }}>
-                    <CardHeader className='pb-3'>
-                      <div className='flex items-start justify-between'>
-                        <div className='flex items-center gap-2'>
-                          {getPriorityIcon(rec.priority)}
-                          <CardTitle className='text-base'>{rec.title}</CardTitle>
-                        </div>
-                        <Badge variant={rec.priority === 'high' ? 'destructive' : 'secondary'}>
-                          {rec.priority}
-                        </Badge>
-                      </div>
-                      <CardDescription className='text-sm'>
-                        {rec.description}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className='space-y-3'>
-                      <div className='rounded-lg bg-muted p-3'>
-                        <p className='text-sm font-medium mb-1'>Suggested Post:</p>
-                        <p className='text-sm text-muted-foreground italic'>
-                          "{rec.suggestedPost}"
-                        </p>
-                      </div>
-                      <p className='text-xs text-muted-foreground'>
-                        <strong>Why:</strong> {rec.reasoning}
-                      </p>
-                      <Button
-                        size='sm'
-                        className='w-full'
-                        onClick={() => handleOpenPostDialog(rec)}
-                      >
-                        <ExternalLink className='h-3 w-3 mr-2' />
-                        Post on Twitter
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Mentions Table */}
           <Card>
@@ -472,53 +296,6 @@ export function MentionsManagement() {
           </Card>
         </div>
       </Main>
-
-      {/* Post Tweet Dialog */}
-      <AlertDialog open={postDialogOpen} onOpenChange={setPostDialogOpen}>
-        <AlertDialogContent className='max-w-2xl'>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Edit and Post Tweet</AlertDialogTitle>
-            <AlertDialogDescription>
-              Review and edit the suggested tweet before posting to Twitter.
-              {selectedRecommendation && (
-                <div className='mt-2'>
-                  <strong>{selectedRecommendation.title}</strong>
-                  <p className='text-xs mt-1'>{selectedRecommendation.reasoning}</p>
-                </div>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className='py-4'>
-            <Textarea
-              value={editedTweetText}
-              onChange={(e) => setEditedTweetText(e.target.value)}
-              rows={6}
-              className='w-full'
-              placeholder='Write your tweet...'
-            />
-            <div className='mt-2 text-sm text-muted-foreground text-right'>
-              {editedTweetText.length} / 280 characters
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handlePostTweet}
-              disabled={postTweetMutation.isPending || editedTweetText.length > 280}
-              className='bg-blue-500 hover:bg-blue-600'
-            >
-              {postTweetMutation.isPending ? (
-                <>
-                  <Loader2 className='h-4 w-4 mr-2 animate-spin' />
-                  Posting...
-                </>
-              ) : (
-                'Post Tweet'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
